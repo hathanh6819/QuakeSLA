@@ -12,7 +12,9 @@ The source-access probe uses the same pinned Studio Next runner and fixed USGS d
 
 This probe proves live validator access to the authoritative source. It is not the production QuakeSLA deployment. Production evidence must additionally show a finalized `create_policy`, an approved or denied `assess_event`, the resulting state/evidence view, and one authorization-control branch.
 
-## Production deployment
+## Legacy v1 deployment
+
+> These receipts prove the original lifecycle and source access, but the hardened contract changes the public API and storage. They must not be presented as live evidence for v2. Deploy v2 and repeat the same matrix before submission.
 
 - QuakeSLA contract: `0x7D2558EE3D6eA3c24dB5edD9D2CdC613C24e9659`
 - Network: Studio Next (`61997`)

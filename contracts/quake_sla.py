@@ -3,6 +3,7 @@
 
 import hashlib
 import json
+from datetime import datetime
 import genlayer as gl
 from genlayer.types import *
 from genlayer.storage import TreeMap
@@ -11,7 +12,8 @@ from genlayer.storage import TreeMap
 USGS_DETAIL_PREFIX = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/"
 USGS_DETAIL_SUFFIX = ".geojson"
 MAX_SOURCE_BYTES = 20000
-MAX_POLICIES = 500
+MAX_POLICIES_PER_OWNER = 100
+MAX_COVERAGE_DURATION_MS = 5 * 365 * 24 * 60 * 60 * 1000
 
 
 def _sender() -> str:
@@ -33,10 +35,30 @@ def _stable(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
+def _now_ms() -> int:
+    raw = str(gl.message_raw["datetime"])
+    return int(datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp() * 1000)
+
+
+def _valid_identifier(value: str) -> bool:
+    return 3 <= len(value) <= 96 and all(c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:-" for c in value)
+
+
+def _valid_sha256(value: str) -> bool:
+    return len(value) == 71 and value.startswith("sha256:") and all(c in "0123456789abcdef" for c in value[7:])
+
+
 class QuakeSLA(gl.contract.Contract):
     policy_count: u256
+    owner_policy_count: TreeMap[str, u256]
+    owner_agreement_policy: TreeMap[str, u256]
 
     policy_owner: TreeMap[u256, str]
+    policy_agreement_id: TreeMap[u256, str]
+    policy_action_digest: TreeMap[u256, str]
+    policy_credit_unit: TreeMap[u256, str]
+    policy_max_credit: TreeMap[u256, u256]
+    policy_created_at_ms: TreeMap[u256, u256]
     policy_beneficiary: TreeMap[u256, str]
     policy_executor: TreeMap[u256, str]
     policy_service: TreeMap[u256, str]
@@ -65,6 +87,10 @@ class QuakeSLA(gl.contract.Contract):
     @gl.public.write
     def create_policy(
         self,
+        agreement_id: str,
+        action_digest: str,
+        credit_unit: str,
+        max_credit: u256,
         beneficiary: str,
         executor: str,
         service_name: str,
@@ -77,10 +103,21 @@ class QuakeSLA(gl.contract.Contract):
         min_lon_e4: i256,
         max_lon_e4: i256,
     ) -> u256:
+        agreement = agreement_id.strip()
+        action = action_digest.strip().lower()
+        unit = credit_unit.strip().upper()
         beneficiary_text = beneficiary.strip().lower()
         executor_text = executor.strip().lower()
         service = service_name.strip()
         region = region_name.strip()
+        if not _valid_identifier(agreement):
+            raise gl.vm.UserError("INVALID_AGREEMENT_ID")
+        if not _valid_sha256(action):
+            raise gl.vm.UserError("INVALID_ACTION_DIGEST")
+        if not _valid_identifier(unit):
+            raise gl.vm.UserError("INVALID_CREDIT_UNIT")
+        if max_credit == 0:
+            raise gl.vm.UserError("INVALID_MAX_CREDIT")
         if not _valid_address(beneficiary_text):
             raise gl.vm.UserError("INVALID_BENEFICIARY")
         if not _valid_address(executor_text):
@@ -91,18 +128,33 @@ class QuakeSLA(gl.contract.Contract):
             raise gl.vm.UserError("INVALID_REGION_NAME")
         if min_magnitude_tenths < 10 or min_magnitude_tenths > 100:
             raise gl.vm.UserError("INVALID_MAGNITUDE_THRESHOLD")
-        if coverage_start_ms <= 0 or coverage_end_ms <= coverage_start_ms:
+        created_at_ms = _now_ms()
+        if coverage_start_ms <= created_at_ms or coverage_end_ms <= coverage_start_ms:
             raise gl.vm.UserError("INVALID_COVERAGE_WINDOW")
+        if coverage_end_ms - coverage_start_ms > MAX_COVERAGE_DURATION_MS:
+            raise gl.vm.UserError("COVERAGE_DURATION_TOO_LONG")
         if min_lat_e4 < -900000 or max_lat_e4 > 900000 or min_lat_e4 > max_lat_e4:
             raise gl.vm.UserError("INVALID_LATITUDE_BOUNDS")
         if min_lon_e4 < -1800000 or max_lon_e4 > 1800000 or min_lon_e4 > max_lon_e4:
             raise gl.vm.UserError("INVALID_LONGITUDE_BOUNDS")
-        if self.policy_count >= MAX_POLICIES:
-            raise gl.vm.UserError("POLICY_LIMIT_REACHED")
+        owner = _sender()
+        owner_count = self.owner_policy_count.get(owner) or 0
+        if owner_count >= MAX_POLICIES_PER_OWNER:
+            raise gl.vm.UserError("OWNER_POLICY_LIMIT_REACHED")
+        agreement_key = owner + ":" + agreement
+        if (self.owner_agreement_policy.get(agreement_key) or 0) != 0:
+            raise gl.vm.UserError("AGREEMENT_ALREADY_REGISTERED")
 
         policy_id = self.policy_count + 1
         self.policy_count = policy_id
-        self.policy_owner[policy_id] = _sender()
+        self.owner_policy_count[owner] = owner_count + 1
+        self.owner_agreement_policy[agreement_key] = policy_id
+        self.policy_owner[policy_id] = owner
+        self.policy_agreement_id[policy_id] = agreement
+        self.policy_action_digest[policy_id] = action
+        self.policy_credit_unit[policy_id] = unit
+        self.policy_max_credit[policy_id] = max_credit
+        self.policy_created_at_ms[policy_id] = created_at_ms
         self.policy_beneficiary[policy_id] = beneficiary_text
         self.policy_executor[policy_id] = executor_text
         self.policy_service[policy_id] = service
@@ -197,6 +249,9 @@ class QuakeSLA(gl.contract.Contract):
                 else:
                     reason = "USGS_REVIEWED_EVENT_MATCH"
                 return _stable({
+                    "action_digest": self.policy_action_digest[key],
+                    "agreement_id": self.policy_agreement_id[key],
+                    "credit_unit": self.policy_credit_unit[key],
                     "event_id": event,
                     "event_time_ms": event_time,
                     "latitude_e4": latitude_e4,
@@ -231,13 +286,17 @@ class QuakeSLA(gl.contract.Contract):
         return receipt
 
     @gl.public.write
-    def consume_authorization(self, policy_id: u256, expected_revision: u256) -> str:
+    def consume_authorization(self, policy_id: u256, expected_revision: u256, action_digest: str, credit_amount: u256) -> str:
         key = policy_id
         self._require_policy(key)
         if self.policy_executor[key] != _sender():
             raise gl.vm.UserError("ONLY_EXECUTION_AUTHORITY")
         if self.policy_revision[key] != expected_revision:
             raise gl.vm.UserError("STALE_REVISION")
+        if action_digest.strip().lower() != self.policy_action_digest[key]:
+            raise gl.vm.UserError("ACTION_DIGEST_MISMATCH")
+        if credit_amount == 0 or credit_amount > self.policy_max_credit[key]:
+            raise gl.vm.UserError("CREDIT_AMOUNT_OUT_OF_SCOPE")
         if self.policy_status[key] != "READY" or self.assessment_verdict[key] != "APPROVED":
             raise gl.vm.UserError("AUTHORIZATION_NOT_READY")
         if self.authorization_consumed[key] != 0:
@@ -257,16 +316,21 @@ class QuakeSLA(gl.contract.Contract):
         key = policy_id
         self._require_policy(key)
         return _stable({
+            "action_digest": self.policy_action_digest[key],
             "assessment_attempts": int(self.assessment_attempts[key]),
+            "agreement_id": self.policy_agreement_id[key],
             "beneficiary": self.policy_beneficiary[key],
             "consumed": int(self.authorization_consumed[key]),
             "consumed_by": self.authorization_consumed_by.get(key) or "",
             "coverage_end_ms": int(self.policy_coverage_end_ms[key]),
             "coverage_start_ms": int(self.policy_coverage_start_ms[key]),
+            "created_at_ms": int(self.policy_created_at_ms[key]),
+            "credit_unit": self.policy_credit_unit[key],
             "event_id": self.assessment_event_id.get(key) or "",
             "executor": self.policy_executor[key],
             "max_lat_e4": int(self.policy_max_lat_e4[key]),
             "max_lon_e4": int(self.policy_max_lon_e4[key]),
+            "max_credit": int(self.policy_max_credit[key]),
             "min_lat_e4": int(self.policy_min_lat_e4[key]),
             "min_lon_e4": int(self.policy_min_lon_e4[key]),
             "min_magnitude_tenths": int(self.policy_min_magnitude_tenths[key]),

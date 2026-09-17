@@ -22,11 +22,16 @@
 | Unauthorized execution | Exact bound executor address | Revert `ONLY_EXECUTION_AUTHORITY` |
 | Replay execution | Consumed flag + terminal status + revision increment | Second call reverts |
 | Source outage / disagreement | strict equivalence plus `UNRESOLVED` fail-closed result | No authorization |
+| Buy coverage after observing a quake | Coverage start must be strictly after on-chain creation time | Revert `INVALID_COVERAGE_WINDOW` |
+| Reuse a legitimate verdict for another payout | Canonical agreement ID, action digest, credit unit and cap are immutable and included in evidence | Consume requires exact digest and bounded amount |
+| Duplicate agreement registration | Agreement ID is unique within each owner namespace | Revert `AGREEMENT_ALREADY_REGISTERED` |
+| Fill a global policy cap | No global cap; quota is per owner (`100`) | Attacker only exhausts their own namespace |
 
 ## Remaining operational risks
 
 - USGS can correct a reviewed event. The stored SHA-256 receipt preserves which response validators accepted.
 - Bounding boxes intentionally model contract scope without pretending to calculate physical damage.
 - Studio Next is a release-candidate network and may reset; submission evidence should include transaction hashes and screenshots.
-- The executor must still enforce the authorized action digest/credit amount in its own billing system. QuakeSLA authorizes the SLA condition, not arbitrary payment calldata.
-
+- The contract binds an action digest and credit cap, but the executor must still recompute the digest from the real billing action before applying it. QuakeSLA does not transfer funds.
+- Agreement uniqueness is scoped to the registering owner. An integration must trust or authenticate that owner as the real SLA authority; a stranger can create an unrelated lookalike policy under their own namespace.
+- A compromised bound executor can consume a valid authorization, but cannot change its digest or exceed its credit cap. Operational key custody remains outside this contract.

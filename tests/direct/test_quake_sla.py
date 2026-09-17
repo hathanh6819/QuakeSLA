@@ -9,6 +9,7 @@ DIRECT_RUNNER = "1zr6nqk597d97kg0dyxg0shhrykx5v02zjgnyrajapy4wlqvfvwh"
 OWNER = "0x1111111111111111111111111111111111111111"
 BENEFICIARY = "0x2222222222222222222222222222222222222222"
 EXECUTOR = "0x3333333333333333333333333333333333333333"
+ACTION_DIGEST = "sha256:" + "a" * 64
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ def deploy_quake(direct_deploy, tmp_path):
     return deploy
 
 
-def event(event_id="us7000thsp", mag=4.8, time=1789543705040, lat=38.0, lon=-120.0, status="reviewed"):
+def event(event_id="us7000thsp", mag=4.8, time=1900500000000, lat=38.0, lon=-120.0, status="reviewed"):
     return {
         "type": "Feature",
         "id": event_id,
@@ -42,10 +43,11 @@ def event(event_id="us7000thsp", mag=4.8, time=1789543705040, lat=38.0, lon=-120
     }
 
 
-def create_policy(contract):
+def create_policy(contract, agreement_id="SLA-2026-001", action_digest=ACTION_DIGEST, max_credit=10000):
     return contract.create_policy(
+        agreement_id, action_digest, "USD_CENTS", max_credit,
         BENEFICIARY, EXECUTOR, "Regional API availability", "Western US", 45,
-        1788886800000, 1791478800000, 240000, 500000, -1260000, -650000,
+        1900000000000, 1901000000000, 240000, 500000, -1260000, -650000,
     )
 
 
@@ -75,7 +77,7 @@ def test_reviewed_matching_event_authorizes(direct_vm, deploy_quake):
     "payload,reason",
     [
         (event(mag=3.2), "BELOW_MAGNITUDE_THRESHOLD"),
-        (event(time=1800000000000), "OUTSIDE_COVERAGE_WINDOW"),
+            (event(time=1902000000000), "OUTSIDE_COVERAGE_WINDOW"),
         (event(lat=60.0), "OUTSIDE_COVERED_REGION"),
     ],
 )
@@ -134,9 +136,9 @@ def test_only_execution_authority_can_consume_once(direct_vm, deploy_quake):
     direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event())})
     contract.assess_event(1, "us7000thsp", 1)
     direct_vm.sender = EXECUTOR
-    assert contract.consume_authorization(1, 2) == "CONSUMED"
+    assert contract.consume_authorization(1, 2, ACTION_DIGEST, 10000) == "CONSUMED"
     with pytest.raises(Exception, match="STALE_REVISION|AUTHORIZATION_ALREADY_CONSUMED|AUTHORIZATION_NOT_READY"):
-        contract.consume_authorization(1, 2)
+        contract.consume_authorization(1, 2, ACTION_DIGEST, 10000)
 
 
 def test_unauthorized_consumer_rejected(direct_vm, deploy_quake):
@@ -146,4 +148,39 @@ def test_unauthorized_consumer_rejected(direct_vm, deploy_quake):
     direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event())})
     contract.assess_event(1, "us7000thsp", 1)
     with pytest.raises(Exception, match="ONLY_EXECUTION_AUTHORITY"):
-        contract.consume_authorization(1, 2)
+        contract.consume_authorization(1, 2, ACTION_DIGEST, 10000)
+
+
+def test_retroactive_policy_rejected(direct_vm, deploy_quake):
+    direct_vm.sender = OWNER
+    contract = deploy_quake()
+    with pytest.raises(Exception, match="INVALID_COVERAGE_WINDOW"):
+        contract.create_policy(
+            "SLA-OLD", ACTION_DIGEST, "USD_CENTS", 10000,
+            BENEFICIARY, EXECUTOR, "Regional API availability", "Western US", 45,
+            1, 2, 240000, 500000, -1260000, -650000,
+        )
+
+
+def test_agreement_unique_per_owner(direct_vm, deploy_quake):
+    direct_vm.sender = OWNER
+    contract = deploy_quake()
+    create_policy(contract)
+    with pytest.raises(Exception, match="AGREEMENT_ALREADY_REGISTERED"):
+        create_policy(contract)
+    direct_vm.sender = BENEFICIARY
+    assert create_policy(contract) == 2
+
+
+def test_consume_scope_is_bound(direct_vm, deploy_quake):
+    direct_vm.sender = OWNER
+    contract = deploy_quake()
+    create_policy(contract)
+    direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event())})
+    contract.assess_event(1, "us7000thsp", 1)
+    direct_vm.sender = EXECUTOR
+    with pytest.raises(Exception, match="ACTION_DIGEST_MISMATCH"):
+        contract.consume_authorization(1, 2, "sha256:" + "b" * 64, 10000)
+    with pytest.raises(Exception, match="CREDIT_AMOUNT_OUT_OF_SCOPE"):
+        contract.consume_authorization(1, 2, ACTION_DIGEST, 10001)
+    assert contract.consume_authorization(1, 2, ACTION_DIGEST, 10000) == "CONSUMED"

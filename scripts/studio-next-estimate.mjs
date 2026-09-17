@@ -17,13 +17,17 @@ const chain = {
 const account = createAccount(key.startsWith("0x") ? key : `0x${key}`);
 const client = createClient({ chain, account });
 const args = [
+  "SLA-2026-001",
+  `sha256:${"a".repeat(64)}`,
+  "USD_CENTS",
+  10_000,
   account.address,
   account.address,
   "Studio Next earthquake SLA",
   "Global",
   40,
-  1_700_000_000_000,
   1_900_000_000_000,
+  1_950_000_000_000,
   -900_000,
   900_000,
   -1_800_000,

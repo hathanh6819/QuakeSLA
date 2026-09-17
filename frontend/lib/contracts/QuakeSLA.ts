@@ -2,16 +2,21 @@ import { createClient } from "genlayer-js";
 import { GENLAYER_CHAIN } from "../genlayer/client";
 
 export interface QuakePolicy {
+  action_digest: string;
+  agreement_id: string;
   assessment_attempts: number;
   beneficiary: string;
   consumed: number;
   consumed_by: string;
   coverage_end_ms: number;
   coverage_start_ms: number;
+  created_at_ms: number;
+  credit_unit: string;
   event_id: string;
   executor: string;
   max_lat_e4: number;
   max_lon_e4: number;
+  max_credit: number;
   min_lat_e4: number;
   min_lon_e4: number;
   min_magnitude_tenths: number;
@@ -78,4 +83,3 @@ export class QuakeSLAContract {
     return value ? JSON.parse(value) as QuakeEvidence : null;
   }
 }
-

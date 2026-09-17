@@ -52,10 +52,14 @@ export function QuakeConsole() {
   const [flow, setFlow] = useState<"create" | "assess" | "consume" | null>(null);
   const [beneficiary, setBeneficiary] = useState("");
   const [executor, setExecutor] = useState("");
+  const [agreementId, setAgreementId] = useState("SLA-2026-001");
+  const [actionDigest, setActionDigest] = useState("");
+  const [creditUnit, setCreditUnit] = useState("USD_CENTS");
+  const [maxCredit, setMaxCredit] = useState("10000");
   const [service, setService] = useState("API availability credit");
   const [region, setRegion] = useState("Western United States");
   const [magnitude, setMagnitude] = useState("4.5");
-  const [start, setStart] = useState(dateInput(-7));
+  const [start, setStart] = useState(dateInput(1));
   const [end, setEnd] = useState(dateInput(30));
   const [bounds, setBounds] = useState({ minLat: "24", maxLat: "50", minLon: "-126", maxLon: "-65" });
   const [assessId, setAssessId] = useState("1");
@@ -63,6 +67,8 @@ export function QuakeConsole() {
   const [revision, setRevision] = useState("1");
   const [consumeId, setConsumeId] = useState("1");
   const [consumeRevision, setConsumeRevision] = useState("2");
+  const [consumeDigest, setConsumeDigest] = useState("");
+  const [consumeAmount, setConsumeAmount] = useState("10000");
 
   useEffect(() => {
     if (wallet.address) {
@@ -76,12 +82,13 @@ export function QuakeConsole() {
     address: contractAddress as `0x${string}`,
     method: "create_policy",
     args: [
+      agreementId.trim(), actionDigest.trim().toLowerCase(), creditUnit.trim().toUpperCase(), Number(maxCredit),
       beneficiary.trim(), executor.trim(), service.trim(), region.trim(),
       Math.round(Number(magnitude) * 10), toMs(start), toMs(end),
       Math.round(Number(bounds.minLat) * 10000), Math.round(Number(bounds.maxLat) * 10000),
       Math.round(Number(bounds.minLon) * 10000), Math.round(Number(bounds.maxLon) * 10000),
     ],
-  }), [beneficiary, executor, service, region, magnitude, start, end, bounds, contractAddress]);
+  }), [agreementId, actionDigest, creditUnit, maxCredit, beneficiary, executor, service, region, magnitude, start, end, bounds, contractAddress]);
 
   const assessTx = useMemo<SubmitInput>(() => ({
     kind: "write", address: contractAddress as `0x${string}`, method: "assess_event",
@@ -90,8 +97,8 @@ export function QuakeConsole() {
 
   const consumeTx = useMemo<SubmitInput>(() => ({
     kind: "write", address: contractAddress as `0x${string}`, method: "consume_authorization",
-    args: [Number(consumeId), Number(consumeRevision)],
-  }), [contractAddress, consumeId, consumeRevision]);
+    args: [Number(consumeId), Number(consumeRevision), consumeDigest.trim().toLowerCase(), Number(consumeAmount)],
+  }), [contractAddress, consumeId, consumeRevision, consumeDigest, consumeAmount]);
 
   const requireReady = (event: FormEvent, next: typeof flow) => {
     event.preventDefault();
@@ -159,6 +166,10 @@ export function QuakeConsole() {
               <div className="card-title"><span><Zap /> Create coverage policy</span><small>Step 1</small></div>
               {flow === "create" && kit ? <TransactionReview onBack={() => setFlow(null)} kit={kit} tx={createTx} onDone={done("Policy creation")} /> :
               <form className="form-grid" onSubmit={(e) => requireReady(e, "create")}>
+                <Field label="Canonical agreement ID"><input value={agreementId} onChange={e => setAgreementId(e.target.value)} required /></Field>
+                <Field label="Authorized action digest" hint="sha256: followed by 64 lowercase hex characters"><input value={actionDigest} onChange={e => setActionDigest(e.target.value)} pattern="sha256:[0-9a-f]{64}" required /></Field>
+                <Field label="Credit unit"><input value={creditUnit} onChange={e => setCreditUnit(e.target.value)} required /></Field>
+                <Field label="Maximum credit"><input type="number" min="1" step="1" value={maxCredit} onChange={e => setMaxCredit(e.target.value)} required /></Field>
                 <Field label="Beneficiary wallet"><input value={beneficiary} onChange={e => setBeneficiary(e.target.value)} required /></Field>
                 <Field label="Execution authority"><input value={executor} onChange={e => setExecutor(e.target.value)} required /></Field>
                 <Field label="Covered service"><input value={service} onChange={e => setService(e.target.value)} required /></Field>
@@ -191,6 +202,8 @@ export function QuakeConsole() {
                 {flow === "consume" && kit ? <TransactionReview onBack={() => setFlow(null)} kit={kit} tx={consumeTx} onDone={done("Authorization consumption")} /> :
                 <form className="small-form" onSubmit={(e) => requireReady(e, "consume")}>
                   <div className="inline-fields"><Field label="Policy ID"><input type="number" min="1" value={consumeId} onChange={e=>setConsumeId(e.target.value)} /></Field><Field label="Expected revision"><input type="number" min="1" value={consumeRevision} onChange={e=>setConsumeRevision(e.target.value)} /></Field></div>
+                  <Field label="Action digest" hint="Must exactly match the policy scope"><input value={consumeDigest} onChange={e=>setConsumeDigest(e.target.value)} pattern="sha256:[0-9a-f]{64}" required /></Field>
+                  <Field label="Credit amount"><input type="number" min="1" step="1" value={consumeAmount} onChange={e=>setConsumeAmount(e.target.value)} required /></Field>
                   <div className="safety-note"><ShieldCheck /><span>Only the wallet bound as execution authority can perform this irreversible one-time action.</span></div>
                   <button className="submit-button secondary" type="submit">Consume approved credit <BadgeCheck /></button>
                 </form>}
@@ -203,7 +216,8 @@ export function QuakeConsole() {
             <div className="lookup"><input type="number" min="1" value={lookupId} onChange={e=>setLookupId(Number(e.target.value))} /><button onClick={()=>void record.refetch()}>Load</button></div>
             {record.isLoading ? <div className="empty-state"><Loader2 className="spin" /><p>Reading verified state…</p></div> : record.isError ? <div className="empty-state"><CircleAlert /><p>Policy #{lookupId} is not available yet.</p></div> : record.data ? <>
               <div className="policy-head"><div><small>POLICY #{record.data.policy.policy_id}</small><h4>{record.data.policy.service}</h4><p><MapPin /> {record.data.policy.region}</p></div><StatusPill status={record.data.policy.status} /></div>
-              <div className="evidence-metrics"><div><span>Threshold</span><strong>M {(record.data.policy.min_magnitude_tenths/10).toFixed(1)}+</strong></div><div><span>Revision</span><strong>{record.data.policy.revision}</strong></div><div><span>Attempts</span><strong>{record.data.policy.assessment_attempts}</strong></div></div>
+              <div className="evidence-metrics"><div><span>Threshold</span><strong>M {(record.data.policy.min_magnitude_tenths/10).toFixed(1)}+</strong></div><div><span>Revision</span><strong>{record.data.policy.revision}</strong></div><div><span>Max credit</span><strong>{record.data.policy.max_credit} {record.data.policy.credit_unit}</strong></div></div>
+              <div className="receipt muted"><dl><div><dt>Agreement</dt><dd>{record.data.policy.agreement_id}</dd></div><div><dt>Action digest</dt><dd className="mono">{record.data.policy.action_digest}</dd></div></dl></div>
               <div className="timeline"><div className="done"><i /><span>Policy bound<small>Terms committed on-chain</small></span></div><div className={record.data.policy.verdict !== "UNASSESSED" ? "done" : ""}><i /><span>Evidence assessed<small>{record.data.policy.event_id || "Awaiting USGS event"}</small></span></div><div className={record.data.policy.status === "READY" || record.data.policy.status === "CONSUMED" ? "done" : ""}><i /><span>Authorization ready<small>Strict validator equivalence</small></span></div><div className={record.data.policy.status === "CONSUMED" ? "done" : ""}><i /><span>Consumed once<small>{record.data.policy.consumed_by ? short(record.data.policy.consumed_by) : "Execution authority only"}</small></span></div></div>
               {record.data.evidence ? <div className="receipt"><div className="receipt-title"><span><FileCheck2 /> Canonical receipt</span><StatusPill status={record.data.evidence.verdict || record.data.evidence.kind} /></div><dl><div><dt>Reason</dt><dd>{record.data.evidence.reason}</dd></div>{record.data.evidence.place && <div><dt>Place</dt><dd>{record.data.evidence.place}</dd></div>}{record.data.evidence.magnitude_tenths != null && <div><dt>Magnitude</dt><dd>{(record.data.evidence.magnitude_tenths/10).toFixed(1)}</dd></div>}{record.data.evidence.sha256 && <div><dt>Evidence digest</dt><dd className="mono">{record.data.evidence.sha256}</dd></div>}</dl>{record.data.evidence.source && <a href={record.data.evidence.source} target="_blank">Open authoritative record <ExternalLink /></a>}</div> : <div className="receipt muted"><CloudLightning /><p>No evidence receipt yet. Submit a reviewed USGS event ID to start consensus.</p></div>}
             </> : null}
