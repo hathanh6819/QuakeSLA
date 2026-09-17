@@ -97,7 +97,7 @@ The caller cannot provide a hostname, path, scheme or verdict. Event identifiers
 - Use the final Studio Next address already recorded in `frontend/.env.example`.
 - Require both accepted/finalized lifecycle **and** `FINISHED_WITH_RETURN`.
 - Copy `frontend/.env.example` to the ignored `frontend/.env.local` after setting the new address.
-- Legacy v1 approved and one-time consume branches are archived in `docs/LIVE_EVIDENCE.md`; rerun them against v2 before submission.
+- Final v2 approved, one-time consume and replay-rejection transactions are recorded in `docs/LIVE_EVIDENCE.md`.
 - Run at least one denied branch and one authorization/consume rejection.
 - Rebuild the static frontend and deploy `frontend/out` to Cloudflare Pages.
 - Record the mandatory demo video showing wallet connection, fee panel, consensus result and on-chain evidence explorer.

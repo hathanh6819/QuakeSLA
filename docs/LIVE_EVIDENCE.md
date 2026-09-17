@@ -44,7 +44,19 @@ This run exposed two lifecycle improvements now present in the final source: a d
 
 The denial receipt records validator-fetched USGS identity, reviewed status, time, magnitude, coordinates, place and body SHA-256 `b2dcb8aca2acbdc76862f12da7164322695c417ea1667f57dda8667a0cc4ee0d`. Fee-free simulations rejected unauthorized assessment, stale revision, wrong action digest, excessive credit amount, consume while not ready, duplicate agreement and retroactive coverage.
 
-At audit time the authoritative all-day feed contained no `reviewed` M1.0+ event occurring after policy coverage began. It did contain live M1.23–M2.4 events marked `automatic`; the transaction above proves those provisional facts fail closed. No fabricated fixture was used to claim a final happy-path consume. The approved-consume-replay run remains pending until an eligible real USGS event becomes `reviewed`; all fail-closed and scope controls on the final deployment are verified.
+At the initial audit time the authoritative all-day feed contained no `reviewed` M1.0+ event occurring after policy coverage began. It did contain live M1.23–M2.4 events marked `automatic`; the transaction above proves those provisional facts fail closed. No fabricated fixture was used.
+
+### Final live happy path and replay rejection
+
+The same final deployment was retested when a qualifying reviewed event became available. Policy `1` covers the whole world, requires M1.0+, and remained assessable at revision `4`.
+
+| Check | Transaction | Verified outcome |
+| --- | --- | --- |
+| Assess reviewed event `us7000thzz` | `0x68801d6669d482463cdb8aae6bd33c30d9794fc3020d4d404e461c9fb8055959` | Finalized, `FINISHED_WITH_RETURN`, `MAJORITY_AGREE`, `APPROVED / USGS_REVIEWED_EVENT_MATCH`, policy `READY`, revision `5` |
+| Consume authorization | `0x8c281ba945b630297be53dfb8004f42ca21230d2000f1395595e429a877d68d3` | Finalized, `FINISHED_WITH_RETURN`, `MAJORITY_AGREE`, policy `CONSUMED`, revision `6`, `consumed_amount = 10000 USD_CENTS` |
+| Replay the same authorization | `0x5a2b5546dc62a6b3e64d283210ab04754e9e68463a2e7ca084a4743cbaad2fcd` | Finalized, `FINISHED_WITH_ERROR`, `MAJORITY_AGREE`, validator result `AUTHORIZATION_NOT_READY`; policy state remained unchanged |
+
+The approved canonical receipt records magnitude `5.0`, place `South Atlantic Ocean`, reviewed status, event time `1789627721815`, and response-body SHA-256 `63e2532237f97e89a942a218c483e80e9f4c2563e92231edcf8f4623300bfae9`. Final state reads `consumed = 1`, `consumed_by = 0xf96cf822f9f4e76956ab9faaa22b3bdcd7b10ad6`, `consumed_amount = 10000`, status `CONSUMED`, and revision `6`.
 
 ## Legacy v1 deployment
 
