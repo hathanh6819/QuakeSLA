@@ -5,7 +5,7 @@ import {
   Activity, ArrowRight, BadgeCheck, Braces, CheckCircle2, CircleAlert,
   CloudLightning, ExternalLink, FileCheck2, Gauge, Globe2, Loader2,
   LockKeyhole, MapPin, Radar, RefreshCw, ShieldCheck, Sparkles, Wallet,
-  Waves, X, Zap,
+  X, Zap,
 } from "lucide-react";
 import {
   GenLayerTransactionPanel,
@@ -133,7 +133,7 @@ export function QuakeConsole() {
   return <>
     <header className="topbar">
       <a href="#top" className="brand" aria-label="QuakeSLA home">
-        <span className="brand-mark"><Waves size={23} /></span>
+        <span className="brand-mark"><img src="/quake-sla-logo.png" alt="" /></span>
         <span><strong>QuakeSLA</strong><small>Verifiable service credits</small></span>
       </a>
       <nav><a href="#workflow">Workflow</a><a href="#console">Console</a><a href="#evidence">Evidence</a></nav>
@@ -243,7 +243,7 @@ export function QuakeConsole() {
 
       <section className="proof-section section-shell"><div className="proof-copy"><span>WHY DECENTRALIZED JUDGMENT?</span><h2>A source can be public and still need consensus.</h2><p>USGS supplies facts, not your SLA outcome. QuakeSLA makes every validator independently prove that the same reviewed event satisfies the exact policy window, magnitude and geographic scope before authorization can exist.</p><div className="proof-list"><div><CheckCircle2 /><span><strong>No arbitrary evidence URLs</strong>Event IDs are constrained and expanded into a fixed USGS endpoint.</span></div><div><CheckCircle2 /><span><strong>Fail closed under uncertainty</strong>Unavailable, malformed or unreviewed evidence becomes UNRESOLVED—not approval.</span></div><div><CheckCircle2 /><span><strong>Replay-resistant lifecycle</strong>Revisions protect stale calls and authorization can be consumed exactly once.</span></div></div></div><div className="seismic-card"><div className="seismic-top"><span>VALIDATOR AGREEMENT</span><strong>3 / 5 quorum</strong></div><div className="wave-line"><svg viewBox="0 0 640 150" preserveAspectRatio="none"><path d="M0 78 L95 78 L112 76 L124 50 L136 115 L149 18 L162 132 L177 62 L191 87 L210 76 L263 78 L276 68 L287 95 L302 36 L315 113 L330 54 L345 86 L361 75 L410 78 L423 70 L438 101 L451 43 L465 107 L480 61 L494 83 L510 77 L640 78" /></svg></div><div className="validator-row">{[1,2,3,4,5].map((v,i)=><div className={i<3?"active":""} key={v}><span>V{v}</span><small>{i<3?"AGREE":"IDLE"}</small></div>)}</div></div></section>
     </main>
-    <footer><div className="brand compact"><span className="brand-mark"><Waves size={18}/></span><span><strong>QuakeSLA</strong></span></div><p>Authoritative seismic evidence. Decentralized judgment. Explicit execution.</p><div><a href="https://studio-next.genlayer.com" target="_blank">Studio Next</a><a href="https://docs.genlayer.com" target="_blank">Docs</a><a href="https://earthquake.usgs.gov" target="_blank">USGS</a></div></footer>
+    <footer><div className="brand compact"><span className="brand-mark"><img src="/quake-sla-logo.png" alt="" /></span><span><strong>QuakeSLA</strong></span></div><p>Authoritative seismic evidence. Decentralized judgment. Explicit execution.</p><div><a href="https://studio-next.genlayer.com" target="_blank">Studio Next</a><a href="https://docs.genlayer.com" target="_blank">Docs</a><a href="https://earthquake.usgs.gov" target="_blank">USGS</a></div></footer>
   </>;
 }
 
