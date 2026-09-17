@@ -19,23 +19,28 @@ const chain = {
 };
 const account = createAccount(ownerKey.startsWith("0x") ? ownerKey : `0x${ownerKey}`);
 const client = createClient({ chain, account });
+const coverageStartMs = Number(process.env.QUAKE_COVERAGE_START_MS || Date.now() + 120_000);
+const coverageEndMs = Number(process.env.QUAKE_COVERAGE_END_MS || coverageStartMs + 365 * 24 * 60 * 60 * 1000);
+const agreementId = process.env.QUAKE_AGREEMENT_ID || `LIVE-${coverageStartMs}`;
+const actionDigest = process.env.QUAKE_ACTION_DIGEST || `sha256:${"a".repeat(64)}`;
+const minMagnitudeTenths = Number(process.env.QUAKE_MIN_MAGNITUDE_TENTHS || 10);
 
 const write = {
   account,
   address: contract,
   functionName: "create_policy",
   args: [
-    "SLA-2026-001",
-    `sha256:${"a".repeat(64)}`,
+    agreementId,
+    actionDigest,
     "USD_CENTS",
     10_000,
     account.address,
     executorAddress,
     "Studio Next earthquake SLA",
     "Global",
-    40,
-    1_900_000_000_000,
-    1_950_000_000_000,
+    minMagnitudeTenths,
+    coverageStartMs,
+    coverageEndMs,
     -900_000,
     900_000,
     -1_800_000,
@@ -53,7 +58,7 @@ const txHash = await client.writeContract({
   },
 });
 
-console.log(JSON.stringify({ txHash, owner: account.address, executor: executorAddress }));
+console.log(JSON.stringify({ txHash, owner: account.address, executor: executorAddress, agreementId, actionDigest, coverageStartMs, coverageEndMs, minMagnitudeTenths }));
 const receipt = await client.waitForTransactionReceipt({
   hash: txHash,
   status: TransactionStatus.FINALIZED,

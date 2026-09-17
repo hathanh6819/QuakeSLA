@@ -36,7 +36,7 @@ def _stable(value) -> str:
 
 
 def _now_ms() -> int:
-    raw = str(gl.message_raw["datetime"])
+    raw = str(gl.message.raw["datetime"])
     return int(datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp() * 1000)
 
 
