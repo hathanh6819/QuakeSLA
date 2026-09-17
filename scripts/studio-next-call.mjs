@@ -18,7 +18,40 @@ const chain = {
 const account = createAccount(key.startsWith("0x") ? key : `0x${key}`);
 const client = createClient({ chain, account });
 const write = { account, address: contract, functionName: method, args };
-const estimate = await client.estimateTransactionFeesForWrite(write);
+const printableResult = (error) => {
+  const seen = new Set();
+  const visit = (value) => {
+    if (!value || typeof value !== "object" || seen.has(value)) return undefined;
+    seen.add(value);
+    const encoded = value?.data?.receipt?.result ?? value?.receipt?.result;
+    if (typeof encoded === "string") {
+      try {
+        return Buffer.from(encoded, "base64").toString("utf8").replace(/[^\x20-\x7e]/g, "");
+      } catch {}
+    }
+    for (const key of Object.getOwnPropertyNames(value)) {
+      let child;
+      try { child = value[key]; } catch { continue; }
+      const found = visit(child);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return visit(error) || error?.shortMessage || error?.message || String(error);
+};
+
+let estimate;
+try {
+  estimate = await client.estimateTransactionFeesForWrite(write);
+} catch (error) {
+  console.error(JSON.stringify({
+    stage: "simulation_rejected",
+    account: account.address,
+    method,
+    reason: printableResult(error),
+  }));
+  process.exit(2);
+}
 console.log(JSON.stringify({ stage: "estimated", account: account.address, method, feeValue: estimate.feeValue, distribution: estimate.distribution }, (_, value) => typeof value === "bigint" ? value.toString() : value));
 const txHash = await client.writeContract({
   ...write,

@@ -17,6 +17,7 @@
 | Oversized/malformed response | 20 KB limit, required structure and guarded JSON parsing | `UNRESOLVED`, never approval |
 | Low-magnitude event | Validators recompute tenths from USGS `mag` | `DENIED / BELOW_MAGNITUDE_THRESHOLD` |
 | Event outside time/region | Validators compare committed window and E4 bounds | Deterministic denial |
+| Submit an irrelevant event to destroy future coverage | `DENIED` is claim-level; policy returns to `ACTIVE` for a later event | Evidence recorded, coverage remains usable |
 | Stale frontend state | Every mutating follow-up carries `expected_revision` | Revert `STALE_REVISION` |
 | Unauthorized assessment | Only policy owner or beneficiary | Revert `ONLY_POLICY_PARTY` |
 | Unauthorized execution | Exact bound executor address | Revert `ONLY_EXECUTION_AUTHORITY` |
@@ -26,6 +27,8 @@
 | Reuse a legitimate verdict for another payout | Canonical agreement ID, action digest, credit unit and cap are immutable and included in evidence | Consume requires exact digest and bounded amount |
 | Duplicate agreement registration | Agreement ID is unique within each owner namespace | Revert `AGREEMENT_ALREADY_REGISTERED` |
 | Fill a global policy cap | No global cap; quota is per owner (`100`) | Attacker only exhausts their own namespace |
+| Provider cancels after risk period begins | Cancellation checks on-chain time against committed coverage start | Revert `COVERAGE_ALREADY_STARTED` |
+| Executor hides the amount it applied | Consumed amount is persisted with executor identity and immutable scope | `consumed_amount` is auditable from `get_policy` |
 
 ## Remaining operational risks
 

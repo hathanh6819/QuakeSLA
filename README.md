@@ -29,7 +29,8 @@ Judgment authority and execution authority are deliberately separate. QuakeSLA p
 - Chain ID: `61997`
 - Runner: `py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng`
 - Explorer: <https://explorer-studio-dev.genlayer.com/>
-- Legacy v1 contract: `0x7D2558EE3D6eA3c24dB5edD9D2CdC613C24e9659` (evidence archive only; the hardened API requires a new deployment)
+- Legacy lifecycle contract: `0x7D2558EE3D6eA3c24dB5edD9D2CdC613C24e9659`
+- Audited pre-final contract: `0x177dc3165Af4fd29c1cFD356e7895130Be04A399` (live denial/unresolved evidence only; final source adds non-terminal denials, post-start cancellation protection and consumed-amount accounting)
 
 The completed contract is [`contracts/quake_sla.py`](contracts/quake_sla.py). The previously deployed `USGSFetchProbe` is evidence that Studio Next validators can fetch and reach strict consensus over the selected USGS source; it is not the production QuakeSLA address.
 
@@ -38,7 +39,7 @@ The completed contract is [`contracts/quake_sla.py`](contracts/quake_sla.py). Th
 1. **Create policy** — provider commits beneficiary, execution authority, service, region, magnitude, coverage window and geographic bounds.
 2. **Assess event** — owner or beneficiary supplies only a constrained USGS event ID. The contract builds the fixed government endpoint.
 3. **Validator judgment** — validators require an exact event identity, reviewed USGS status, earthquake type, bounded response and valid coordinates. They recompute every policy predicate.
-4. **Fail closed** — missing, malformed, oversized, unreviewed or unavailable evidence becomes `UNRESOLVED`, never approval.
+4. **Fail closed** — missing, malformed, oversized, unreviewed or unavailable evidence becomes `UNRESOLVED`, never approval. A valid but non-matching event records `DENIED` without destroying coverage for later events.
 5. **Consume once** — only the bound execution authority can consume `READY`; revision checks reject stale calls and state prevents replay.
 
 Coverage cannot be registered retroactively: its start must be in the future at creation time. Each policy also commits a canonical agreement ID, SHA-256 action digest, credit unit and maximum credit. Consumption must match that scope exactly.
@@ -50,7 +51,7 @@ Coverage cannot be registered retroactively: its start must be in the future at 
 | `create_policy(...)` | write | Pre-register a unique agreement, action digest, credit cap, parties and future coverage terms |
 | `assess_event(policy_id, event_id, expected_revision)` | write | Fetch USGS and produce consensus receipt |
 | `consume_authorization(policy_id, expected_revision, action_digest, credit_amount)` | write | One-time, scope-bound executor acknowledgement |
-| `cancel_policy(policy_id, expected_revision)` | write | Owner cancellation before assessment |
+| `cancel_policy(policy_id, expected_revision)` | write | Owner cancellation only before coverage starts |
 | `get_policy(policy_id)` | view | Canonical policy/lifecycle JSON |
 | `get_evidence(policy_id)` | view | Canonical USGS evidence receipt |
 | `get_policy_count()` | view | Number of registered policies |
@@ -67,7 +68,7 @@ npm run lint
 npm run build
 ```
 
-The direct suite covers approval, below-threshold denial, outside-window denial, outside-region denial, unreviewed fail-closed behavior, identity mismatch, URL/path injection rejection, stale revision rejection, unauthorized consumption, replay prevention, retroactive-policy rejection, duplicate-agreement rejection, action-digest mismatch and credit-cap enforcement. The current Windows `gltest` package cannot execute the Studio Next runner because its message codec predates that runner; do not replace the production dependency hash to make an outdated harness pass. Contract lint, frontend tests/build and live Studio Next checks remain reproducible now; run the direct suite when the matching runner lands in `gltest` or in the official Studio test environment.
+The direct suite covers approval, non-terminal denials, outside-window denial, outside-region denial, unreviewed fail-closed behavior, identity mismatch, URL/path injection rejection, stale revision rejection, unauthorized consumption, replay prevention, retroactive-policy rejection, duplicate-agreement rejection, action-digest mismatch, consumed-amount accounting and credit-cap enforcement. The current Windows `gltest` package cannot execute the Studio Next runner because its message codec predates that runner; do not replace the production dependency hash to make an outdated harness pass. Contract lint, frontend tests/build and live Studio Next checks remain reproducible now; run the direct suite when the matching runner lands in `gltest` or in the official Studio test environment.
 
 ## Frontend
 

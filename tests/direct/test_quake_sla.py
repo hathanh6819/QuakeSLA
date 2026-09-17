@@ -89,6 +89,20 @@ def test_non_matching_evidence_is_denied(direct_vm, deploy_quake, payload, reaso
     receipt = json.loads(contract.assess_event(1, "us7000thsp", 1))
     assert receipt["verdict"] == "DENIED"
     assert receipt["reason"] == reason
+    assert json.loads(contract.get_policy(1))["status"] == "ACTIVE"
+
+
+def test_denied_claim_does_not_destroy_future_coverage(direct_vm, deploy_quake):
+    direct_vm.sender = OWNER
+    contract = deploy_quake()
+    create_policy(contract)
+    direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event(mag=3.2))})
+    first = json.loads(contract.assess_event(1, "us7000thsp", 1))
+    assert first["verdict"] == "DENIED"
+    direct_vm.mock_web(r".*us7000next\.geojson", {"status": 200, "body": json.dumps(event(event_id="us7000next"))})
+    second = json.loads(contract.assess_event(1, "us7000next", 2))
+    assert second["verdict"] == "APPROVED"
+    assert json.loads(contract.get_policy(1))["status"] == "READY"
 
 
 def test_unreviewed_event_fails_closed_and_can_retry(direct_vm, deploy_quake):
@@ -137,6 +151,8 @@ def test_only_execution_authority_can_consume_once(direct_vm, deploy_quake):
     contract.assess_event(1, "us7000thsp", 1)
     direct_vm.sender = EXECUTOR
     assert contract.consume_authorization(1, 2, ACTION_DIGEST, 10000) == "CONSUMED"
+    policy = json.loads(contract.get_policy(1))
+    assert policy["consumed_amount"] == 10000
     with pytest.raises(Exception, match="STALE_REVISION|AUTHORIZATION_ALREADY_CONSUMED|AUTHORIZATION_NOT_READY"):
         contract.consume_authorization(1, 2, ACTION_DIGEST, 10000)
 

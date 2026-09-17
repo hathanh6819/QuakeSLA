@@ -12,6 +12,21 @@ The source-access probe uses the same pinned Studio Next runner and fixed USGS d
 
 This probe proves live validator access to the authoritative source. It is not the production QuakeSLA deployment. Production evidence must additionally show a finalized `create_policy`, an approved or denied `assess_event`, the resulting state/evidence view, and one authorization-control branch.
 
+## Hardened pre-final audit deployment
+
+Contract `0x177dc3165Af4fd29c1cFD356e7895130Be04A399` was audited live with two wallets before the final source hardening. It is retained only as reproducible evidence and must not be configured in the final frontend.
+
+| Check | Transaction / simulation | Verified outcome |
+| --- | --- | --- |
+| Create future-only policy | `0x0e9af2418335ab7dd69c3d9f60b54d7b17269a437724eef3114bae6043eab5e4` | Finalized, `ACTIVE`, revision 1 |
+| Validator fetch of reviewed historical event | `0x11a71bc9484a38b9a8d068b1fb3d7153f37d835ded1dfd756686f6d72a0e7d26` | Finalized, `DENIED / OUTSIDE_COVERAGE_WINDOW`; canonical receipt includes USGS fields and body SHA-256 |
+| Create source-failure test policy | `0x2d6db65e2a4c66f70d99830bdf09bcc6423942278c93c0fb1cb3ddd17eabd683` | Finalized, `ACTIVE` |
+| Missing USGS event | `0x0bde1e835469ae4a0665081a806c5fccb006121b97022b6188df66d7fbb085c3` | Finalized, `UNRESOLVED / SOURCE_UNAVAILABLE_OR_MALFORMED`; no authorization |
+
+Fee-free simulations also rejected stale revision (`STALE_REVISION`), unauthorized assessment (`ONLY_POLICY_PARTY`), wrong action digest (`ACTION_DIGEST_MISMATCH`), excessive credit (`CREDIT_AMOUNT_OUT_OF_SCOPE`), consume without approval (`AUTHORIZATION_NOT_READY`), duplicate agreement (`AGREEMENT_ALREADY_REGISTERED`), and retroactive coverage (`INVALID_COVERAGE_WINDOW`).
+
+This run exposed two lifecycle improvements now present in the final source: a denied claim no longer terminates future coverage, and an owner cannot cancel after coverage begins. The final source also persists the exact consumed credit amount. A new final deployment is therefore required.
+
 ## Legacy v1 deployment
 
 > These receipts prove the original lifecycle and source access, but the hardened contract changes the public API and storage. They must not be presented as live evidence for v2. Deploy v2 and repeat the same matrix before submission.

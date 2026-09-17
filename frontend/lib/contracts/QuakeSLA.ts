@@ -7,6 +7,7 @@ export interface QuakePolicy {
   assessment_attempts: number;
   beneficiary: string;
   consumed: number;
+  consumed_amount: number;
   consumed_by: string;
   coverage_end_ms: number;
   coverage_start_ms: number;

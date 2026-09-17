@@ -80,6 +80,7 @@ class QuakeSLA(gl.contract.Contract):
     assessment_attempts: TreeMap[u256, u256]
     authorization_consumed: TreeMap[u256, u256]
     authorization_consumed_by: TreeMap[u256, str]
+    authorization_consumed_amount: TreeMap[u256, u256]
 
     def __init__(self):
         self.policy_count = 0
@@ -171,6 +172,7 @@ class QuakeSLA(gl.contract.Contract):
         self.assessment_verdict[policy_id] = "UNASSESSED"
         self.assessment_attempts[policy_id] = 0
         self.authorization_consumed[policy_id] = 0
+        self.authorization_consumed_amount[policy_id] = 0
         return policy_id
 
     @gl.public.write
@@ -183,6 +185,8 @@ class QuakeSLA(gl.contract.Contract):
             raise gl.vm.UserError("STALE_REVISION")
         if self.policy_status[key] != "ACTIVE":
             raise gl.vm.UserError("POLICY_NOT_ACTIVE")
+        if _now_ms() >= int(self.policy_coverage_start_ms[key]):
+            raise gl.vm.UserError("COVERAGE_ALREADY_STARTED")
         self.policy_status[key] = "CANCELLED"
         self.policy_revision[key] = self.policy_revision[key] + 1
         return "CANCELLED"
@@ -280,7 +284,9 @@ class QuakeSLA(gl.contract.Contract):
         if verdict == "APPROVED":
             self.policy_status[key] = "READY"
         elif verdict == "DENIED":
-            self.policy_status[key] = "DENIED"
+            # A non-matching event denies only that claim. It must not destroy
+            # an otherwise-active policy that may cover a later event.
+            self.policy_status[key] = "ACTIVE"
         else:
             self.policy_status[key] = "UNRESOLVED"
         return receipt
@@ -303,6 +309,7 @@ class QuakeSLA(gl.contract.Contract):
             raise gl.vm.UserError("AUTHORIZATION_ALREADY_CONSUMED")
         self.authorization_consumed[key] = 1
         self.authorization_consumed_by[key] = _sender()
+        self.authorization_consumed_amount[key] = credit_amount
         self.policy_status[key] = "CONSUMED"
         self.policy_revision[key] = self.policy_revision[key] + 1
         return "CONSUMED"
@@ -321,6 +328,7 @@ class QuakeSLA(gl.contract.Contract):
             "agreement_id": self.policy_agreement_id[key],
             "beneficiary": self.policy_beneficiary[key],
             "consumed": int(self.authorization_consumed[key]),
+            "consumed_amount": int(self.authorization_consumed_amount[key]),
             "consumed_by": self.authorization_consumed_by.get(key) or "",
             "coverage_end_ms": int(self.policy_coverage_end_ms[key]),
             "coverage_start_ms": int(self.policy_coverage_start_ms[key]),
