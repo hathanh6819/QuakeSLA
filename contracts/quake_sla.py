@@ -5,6 +5,7 @@ import hashlib
 import json
 import genlayer as gl
 from genlayer.types import *
+from genlayer.storage import TreeMap
 
 
 USGS_DETAIL_PREFIX = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/"
@@ -59,7 +60,7 @@ class QuakeSLA(gl.contract.Contract):
     authorization_consumed_by: TreeMap[u256, str]
 
     def __init__(self):
-        self.policy_count = u256(0)
+        self.policy_count = 0
 
     @gl.public.write
     def create_policy(
@@ -96,28 +97,28 @@ class QuakeSLA(gl.contract.Contract):
             raise gl.vm.UserError("INVALID_LATITUDE_BOUNDS")
         if min_lon_e4 < -1800000 or max_lon_e4 > 1800000 or min_lon_e4 > max_lon_e4:
             raise gl.vm.UserError("INVALID_LONGITUDE_BOUNDS")
-        if self.policy_count >= u256(MAX_POLICIES):
+        if self.policy_count >= MAX_POLICIES:
             raise gl.vm.UserError("POLICY_LIMIT_REACHED")
 
-        policy_id = u256(self.policy_count + u256(1))
+        policy_id = self.policy_count + 1
         self.policy_count = policy_id
         self.policy_owner[policy_id] = _sender()
         self.policy_beneficiary[policy_id] = beneficiary_text
         self.policy_executor[policy_id] = executor_text
         self.policy_service[policy_id] = service
         self.policy_region[policy_id] = region
-        self.policy_min_magnitude_tenths[policy_id] = u256(min_magnitude_tenths)
-        self.policy_coverage_start_ms[policy_id] = u256(coverage_start_ms)
-        self.policy_coverage_end_ms[policy_id] = u256(coverage_end_ms)
-        self.policy_min_lat_e4[policy_id] = i256(min_lat_e4)
-        self.policy_max_lat_e4[policy_id] = i256(max_lat_e4)
-        self.policy_min_lon_e4[policy_id] = i256(min_lon_e4)
-        self.policy_max_lon_e4[policy_id] = i256(max_lon_e4)
-        self.policy_revision[policy_id] = u256(1)
+        self.policy_min_magnitude_tenths[policy_id] = min_magnitude_tenths
+        self.policy_coverage_start_ms[policy_id] = coverage_start_ms
+        self.policy_coverage_end_ms[policy_id] = coverage_end_ms
+        self.policy_min_lat_e4[policy_id] = min_lat_e4
+        self.policy_max_lat_e4[policy_id] = max_lat_e4
+        self.policy_min_lon_e4[policy_id] = min_lon_e4
+        self.policy_max_lon_e4[policy_id] = max_lon_e4
+        self.policy_revision[policy_id] = 1
         self.policy_status[policy_id] = "ACTIVE"
         self.assessment_verdict[policy_id] = "UNASSESSED"
-        self.assessment_attempts[policy_id] = u256(0)
-        self.authorization_consumed[policy_id] = u256(0)
+        self.assessment_attempts[policy_id] = 0
+        self.authorization_consumed[policy_id] = 0
         return policy_id
 
     @gl.public.write
@@ -131,7 +132,7 @@ class QuakeSLA(gl.contract.Contract):
         if self.policy_status[key] != "ACTIVE":
             raise gl.vm.UserError("POLICY_NOT_ACTIVE")
         self.policy_status[key] = "CANCELLED"
-        self.policy_revision[key] = u256(self.policy_revision[key] + u256(1))
+        self.policy_revision[key] = self.policy_revision[key] + 1
         return "CANCELLED"
 
     @gl.public.write
@@ -219,8 +220,8 @@ class QuakeSLA(gl.contract.Contract):
         self.assessment_verdict[key] = verdict
         self.assessment_reason[key] = reason
         self.assessment_evidence[key] = receipt
-        self.assessment_attempts[key] = u256(self.assessment_attempts[key] + u256(1))
-        self.policy_revision[key] = u256(self.policy_revision[key] + u256(1))
+        self.assessment_attempts[key] = self.assessment_attempts[key] + 1
+        self.policy_revision[key] = self.policy_revision[key] + 1
         if verdict == "APPROVED":
             self.policy_status[key] = "READY"
         elif verdict == "DENIED":
@@ -239,12 +240,12 @@ class QuakeSLA(gl.contract.Contract):
             raise gl.vm.UserError("STALE_REVISION")
         if self.policy_status[key] != "READY" or self.assessment_verdict[key] != "APPROVED":
             raise gl.vm.UserError("AUTHORIZATION_NOT_READY")
-        if self.authorization_consumed[key] != u256(0):
+        if self.authorization_consumed[key] != 0:
             raise gl.vm.UserError("AUTHORIZATION_ALREADY_CONSUMED")
-        self.authorization_consumed[key] = u256(1)
+        self.authorization_consumed[key] = 1
         self.authorization_consumed_by[key] = _sender()
         self.policy_status[key] = "CONSUMED"
-        self.policy_revision[key] = u256(self.policy_revision[key] + u256(1))
+        self.policy_revision[key] = self.policy_revision[key] + 1
         return "CONSUMED"
 
     @gl.public.view
@@ -285,5 +286,5 @@ class QuakeSLA(gl.contract.Contract):
         return self.assessment_evidence.get(key) or ""
 
     def _require_policy(self, key: u256) -> None:
-        if key == u256(0) or key > self.policy_count:
+        if key == 0 or key > self.policy_count:
             raise gl.vm.UserError("POLICY_NOT_FOUND")
