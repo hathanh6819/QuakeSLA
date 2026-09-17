@@ -31,6 +31,7 @@ Judgment authority and execution authority are deliberately separate. QuakeSLA p
 - Explorer: <https://explorer-studio-dev.genlayer.com/>
 - Legacy lifecycle contract: `0x7D2558EE3D6eA3c24dB5edD9D2CdC613C24e9659`
 - Audited pre-final contract: `0x177dc3165Af4fd29c1cFD356e7895130Be04A399` (live denial/unresolved evidence only; final source adds non-terminal denials, post-start cancellation protection and consumed-amount accounting)
+- Final hardened contract: `0xaE660255E845d506a012C3b6540cA9E48995F24b`
 
 The completed contract is [`contracts/quake_sla.py`](contracts/quake_sla.py). The previously deployed `USGSFetchProbe` is evidence that Studio Next validators can fetch and reach strict consensus over the selected USGS source; it is not the production QuakeSLA address.
 
@@ -93,7 +94,7 @@ The caller cannot provide a hostname, path, scheme or verdict. Event identifiers
 
 ## Deployment checklist
 
-- Deploy the hardened contract on Studio Next and replace the placeholder in `frontend/.env.example`.
+- Use the final Studio Next address already recorded in `frontend/.env.example`.
 - Require both accepted/finalized lifecycle **and** `FINISHED_WITH_RETURN`.
 - Copy `frontend/.env.example` to the ignored `frontend/.env.local` after setting the new address.
 - Legacy v1 approved and one-time consume branches are archived in `docs/LIVE_EVIDENCE.md`; rerun them against v2 before submission.
