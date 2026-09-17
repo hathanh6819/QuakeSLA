@@ -15,6 +15,7 @@ import {
 import { GENLAYER_NETWORK, getContractAddress } from "@/lib/genlayer/client";
 import { useWallet } from "@/lib/genlayer/wallet";
 import { useTransactionKit } from "@/lib/genlayer/kit";
+import { isConfirmedSuccess, transactionFailureLabel } from "@/lib/genlayer/transactionStatus";
 import { usePolicy, usePolicyCount, useRefreshQuakeData } from "@/lib/hooks/useQuakeSLA";
 import { toast } from "sonner";
 
@@ -104,12 +105,27 @@ export function QuakeConsole() {
     event.preventDefault();
     if (!contractAddress) return toast.error("Contract address is not configured");
     if (!wallet.isConnected) return toast.error("Connect your wallet first");
+    if (!wallet.isOnCorrectNetwork) return toast.error("Switch your wallet to GenLayer Studio Next (chain 61997)");
     if (!kit) return toast.error("Transaction Kit is not ready");
+    if (next === "create") {
+      const startMs = toMs(start);
+      const endMs = toMs(end);
+      const coordinates = Object.values(bounds).map(Number);
+      if (!Number.isFinite(startMs) || startMs <= Date.now()) return toast.error("Coverage must start in the future");
+      if (!Number.isFinite(endMs) || endMs <= startMs) return toast.error("Coverage end must be after its start");
+      if (endMs - startMs > 5 * 365 * 86400000) return toast.error("Coverage cannot exceed five years");
+      if (coordinates.some((value) => !Number.isFinite(value))) return toast.error("All geographic bounds are required");
+      if (coordinates[0] < -90 || coordinates[1] > 90 || coordinates[0] > coordinates[1]) return toast.error("Latitude bounds are invalid");
+      if (coordinates[2] < -180 || coordinates[3] > 180 || coordinates[2] > coordinates[3]) return toast.error("Longitude bounds are invalid");
+    }
     setFlow(next);
   };
 
   const done = (label: string) => (status: TrackedStatus) => {
-    if (status.successful === false) return toast.error(`${label} did not finish successfully`);
+    if (!isConfirmedSuccess(status)) {
+      toast.error(transactionFailureLabel(status));
+      return;
+    }
     toast.success(`${label} confirmed by GenLayer consensus`);
     setFlow(null); refresh();
   };
@@ -142,7 +158,7 @@ export function QuakeConsole() {
       <section className="metrics-strip">
         <Metric icon={<Radar />} label="Evidence authority" value="USGS GeoJSON" accent />
         <Metric icon={<ShieldCheck />} label="Network" value="Studio Next · 61997" />
-        <Metric icon={<FileCheck2 />} label="Policies on-chain" value={count.isLoading ? "—" : String(count.data ?? 0)} />
+        <Metric icon={<FileCheck2 />} label="Policies on-chain" value={count.isLoading ? "—" : count.isError ? "Unavailable" : String(count.data ?? 0)} />
         <Metric icon={<LockKeyhole />} label="Execution model" value="Explicit consume" />
       </section>
 
@@ -166,22 +182,22 @@ export function QuakeConsole() {
               <div className="card-title"><span><Zap /> Create coverage policy</span><small>Step 1</small></div>
               {flow === "create" && kit ? <TransactionReview onBack={() => setFlow(null)} kit={kit} tx={createTx} onDone={done("Policy creation")} /> :
               <form className="form-grid" onSubmit={(e) => requireReady(e, "create")}>
-                <Field label="Canonical agreement ID"><input value={agreementId} onChange={e => setAgreementId(e.target.value)} required /></Field>
+                <Field label="Canonical agreement ID"><input value={agreementId} onChange={e => setAgreementId(e.target.value)} minLength={3} maxLength={96} pattern="[A-Za-z0-9_.:-]+" required /></Field>
                 <Field label="Authorized action digest" hint="sha256: followed by 64 lowercase hex characters"><input value={actionDigest} onChange={e => setActionDigest(e.target.value)} pattern="sha256:[0-9a-f]{64}" required /></Field>
-                <Field label="Credit unit"><input value={creditUnit} onChange={e => setCreditUnit(e.target.value)} required /></Field>
+                <Field label="Credit unit"><input value={creditUnit} onChange={e => setCreditUnit(e.target.value)} minLength={3} maxLength={96} pattern="[A-Za-z0-9_.:-]+" required /></Field>
                 <Field label="Maximum credit"><input type="number" min="1" step="1" value={maxCredit} onChange={e => setMaxCredit(e.target.value)} required /></Field>
-                <Field label="Beneficiary wallet"><input value={beneficiary} onChange={e => setBeneficiary(e.target.value)} required /></Field>
-                <Field label="Execution authority"><input value={executor} onChange={e => setExecutor(e.target.value)} required /></Field>
-                <Field label="Covered service"><input value={service} onChange={e => setService(e.target.value)} required /></Field>
-                <Field label="Region label"><input value={region} onChange={e => setRegion(e.target.value)} required /></Field>
+                <Field label="Beneficiary wallet"><input value={beneficiary} onChange={e => setBeneficiary(e.target.value)} pattern="0x[0-9A-Fa-f]{40}" required /></Field>
+                <Field label="Execution authority"><input value={executor} onChange={e => setExecutor(e.target.value)} pattern="0x[0-9A-Fa-f]{40}" required /></Field>
+                <Field label="Covered service"><input value={service} onChange={e => setService(e.target.value)} minLength={3} maxLength={80} required /></Field>
+                <Field label="Region label"><input value={region} onChange={e => setRegion(e.target.value)} minLength={2} maxLength={80} required /></Field>
                 <Field label="Minimum magnitude"><input type="number" min="1" max="10" step="0.1" value={magnitude} onChange={e => setMagnitude(e.target.value)} required /></Field>
                 <Field label="Coverage starts"><input type="datetime-local" value={start} onChange={e => setStart(e.target.value)} required /></Field>
                 <Field label="Coverage ends"><input type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} required /></Field>
                 <div className="bbox-fields">
-                  <Field label="Min latitude"><input type="number" step="0.0001" value={bounds.minLat} onChange={e => setBounds({...bounds, minLat:e.target.value})} /></Field>
-                  <Field label="Max latitude"><input type="number" step="0.0001" value={bounds.maxLat} onChange={e => setBounds({...bounds, maxLat:e.target.value})} /></Field>
-                  <Field label="Min longitude"><input type="number" step="0.0001" value={bounds.minLon} onChange={e => setBounds({...bounds, minLon:e.target.value})} /></Field>
-                  <Field label="Max longitude"><input type="number" step="0.0001" value={bounds.maxLon} onChange={e => setBounds({...bounds, maxLon:e.target.value})} /></Field>
+                  <Field label="Min latitude"><input type="number" min="-90" max="90" step="0.0001" value={bounds.minLat} onChange={e => setBounds({...bounds, minLat:e.target.value})} required /></Field>
+                  <Field label="Max latitude"><input type="number" min="-90" max="90" step="0.0001" value={bounds.maxLat} onChange={e => setBounds({...bounds, maxLat:e.target.value})} required /></Field>
+                  <Field label="Min longitude"><input type="number" min="-180" max="180" step="0.0001" value={bounds.minLon} onChange={e => setBounds({...bounds, minLon:e.target.value})} required /></Field>
+                  <Field label="Max longitude"><input type="number" min="-180" max="180" step="0.0001" value={bounds.maxLon} onChange={e => setBounds({...bounds, maxLon:e.target.value})} required /></Field>
                 </div>
                 <button className="submit-button" type="submit">Review policy transaction <ArrowRight /></button>
               </form>}
@@ -192,8 +208,8 @@ export function QuakeConsole() {
                 <div className="card-title"><span><Radar /> Assess USGS event</span><small>Step 2</small></div>
                 {flow === "assess" && kit ? <TransactionReview onBack={() => setFlow(null)} kit={kit} tx={assessTx} onDone={done("Event assessment")} /> :
                 <form className="small-form" onSubmit={(e) => requireReady(e, "assess")}>
-                  <div className="inline-fields"><Field label="Policy ID"><input type="number" min="1" value={assessId} onChange={e=>setAssessId(e.target.value)} /></Field><Field label="Expected revision"><input type="number" min="1" value={revision} onChange={e=>setRevision(e.target.value)} /></Field></div>
-                  <Field label="USGS event ID" hint="Example verified live event: us7000thsp"><input value={eventId} onChange={e=>setEventId(e.target.value)} /></Field>
+                  <div className="inline-fields"><Field label="Policy ID"><input type="number" min="1" value={assessId} onChange={e=>setAssessId(e.target.value)} required /></Field><Field label="Expected revision"><input type="number" min="1" value={revision} onChange={e=>setRevision(e.target.value)} required /></Field></div>
+                  <Field label="USGS event ID" hint="Example verified live event: us7000thsp"><input value={eventId} onChange={e=>setEventId(e.target.value)} minLength={6} maxLength={32} pattern="[A-Za-z0-9_-]+" required /></Field>
                   <button className="submit-button secondary" type="submit">Run validator assessment <Activity /></button>
                 </form>}
               </article>
@@ -201,7 +217,7 @@ export function QuakeConsole() {
                 <div className="card-title"><span><LockKeyhole /> Consume authorization</span><small>Step 3</small></div>
                 {flow === "consume" && kit ? <TransactionReview onBack={() => setFlow(null)} kit={kit} tx={consumeTx} onDone={done("Authorization consumption")} /> :
                 <form className="small-form" onSubmit={(e) => requireReady(e, "consume")}>
-                  <div className="inline-fields"><Field label="Policy ID"><input type="number" min="1" value={consumeId} onChange={e=>setConsumeId(e.target.value)} /></Field><Field label="Expected revision"><input type="number" min="1" value={consumeRevision} onChange={e=>setConsumeRevision(e.target.value)} /></Field></div>
+                  <div className="inline-fields"><Field label="Policy ID"><input type="number" min="1" value={consumeId} onChange={e=>setConsumeId(e.target.value)} required /></Field><Field label="Expected revision"><input type="number" min="1" value={consumeRevision} onChange={e=>setConsumeRevision(e.target.value)} required /></Field></div>
                   <Field label="Action digest" hint="Must exactly match the policy scope"><input value={consumeDigest} onChange={e=>setConsumeDigest(e.target.value)} pattern="sha256:[0-9a-f]{64}" required /></Field>
                   <Field label="Credit amount"><input type="number" min="1" step="1" value={consumeAmount} onChange={e=>setConsumeAmount(e.target.value)} required /></Field>
                   <div className="safety-note"><ShieldCheck /><span>Only the wallet bound as execution authority can perform this irreversible one-time action.</span></div>
@@ -214,7 +230,7 @@ export function QuakeConsole() {
           <aside id="evidence" className="evidence-panel">
             <div className="panel-header"><div><span>ON-CHAIN EXPLORER</span><h3>Policy evidence</h3></div><button onClick={() => {refresh(); void record.refetch();}} aria-label="Refresh"><RefreshCw size={16} className={record.isFetching ? "spin" : ""} /></button></div>
             <div className="lookup"><input type="number" min="1" value={lookupId} onChange={e=>setLookupId(Number(e.target.value))} /><button onClick={()=>void record.refetch()}>Load</button></div>
-            {record.isLoading ? <div className="empty-state"><Loader2 className="spin" /><p>Reading verified state…</p></div> : record.isError ? <div className="empty-state"><CircleAlert /><p>Policy #{lookupId} is not available yet.</p></div> : record.data ? <>
+            {record.isLoading ? <div className="empty-state"><Loader2 className="spin" /><p>Reading verified state…</p></div> : record.isError ? <div className="empty-state"><CircleAlert /><p>Unable to read policy #{lookupId}. Check the policy ID and RPC connection.</p></div> : record.data ? <>
               <div className="policy-head"><div><small>POLICY #{record.data.policy.policy_id}</small><h4>{record.data.policy.service}</h4><p><MapPin /> {record.data.policy.region}</p></div><StatusPill status={record.data.policy.status} /></div>
               <div className="evidence-metrics"><div><span>Threshold</span><strong>M {(record.data.policy.min_magnitude_tenths/10).toFixed(1)}+</strong></div><div><span>Revision</span><strong>{record.data.policy.revision}</strong></div><div><span>Max credit</span><strong>{record.data.policy.max_credit} {record.data.policy.credit_unit}</strong></div></div>
               <div className="receipt muted"><dl><div><dt>Agreement</dt><dd>{record.data.policy.agreement_id}</dd></div><div><dt>Action digest</dt><dd className="mono">{record.data.policy.action_digest}</dd></div></dl></div>
