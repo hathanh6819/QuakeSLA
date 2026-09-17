@@ -5,7 +5,7 @@ import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://quake-sla.pages.dev"),
-  title: "QuakeSLA — Verifiable Seismic Service Credits",
+  title: "QuakeSLA | Verifiable Seismic Service Credits",
   description: "USGS-backed earthquake SLA authorization validated by GenLayer consensus.",
   manifest: "/site.webmanifest",
   icons: {
