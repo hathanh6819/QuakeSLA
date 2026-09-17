@@ -40,10 +40,11 @@ This run exposed two lifecycle improvements now present in the final source: a d
 | Cancel after coverage began | `0x6cbb652aaf5a13f5ffe439ca6bf63361b348ff376bae5946a8c402547d16f3ce` | Finalized `FINISHED_WITH_ERROR`; state remained `ACTIVE`, revision 1 |
 | Reviewed event outside coverage | `0x1205032f7f1f49c9789998c0261e5ad762b9d613c483faeea36c4d080e81e96d` | Finalized `DENIED / OUTSIDE_COVERAGE_WINDOW`; policy remains `ACTIVE`, revision 2 |
 | Retry unavailable event | `0xa21aa42e9aa64bc27af223a860b017435e97578634dfc4c4dc0bb69960b9efb4` | Finalized `UNRESOLVED / SOURCE_UNAVAILABLE_OR_MALFORMED`, revision 3 |
+| Live event still provisional | `0x40b1b1879d5342c3129f78a572b8ca9be1d0487400fe40ffc252b58ff97be54a` | Validators fetched `tx2026shqpft` but returned `UNRESOLVED / USGS_NOT_REVIEWED`; no authorization, revision 4 |
 
 The denial receipt records validator-fetched USGS identity, reviewed status, time, magnitude, coordinates, place and body SHA-256 `b2dcb8aca2acbdc76862f12da7164322695c417ea1667f57dda8667a0cc4ee0d`. Fee-free simulations rejected unauthorized assessment, stale revision, wrong action digest, excessive credit amount, consume while not ready, duplicate agreement and retroactive coverage.
 
-At audit time the authoritative all-day feed contained no `reviewed` M1.0+ event occurring after policy coverage began. Therefore no fabricated fixture was used to claim a final happy-path consume. The approved-consume-replay run remains pending until an eligible real USGS event exists; all fail-closed and scope controls on the final deployment are verified.
+At audit time the authoritative all-day feed contained no `reviewed` M1.0+ event occurring after policy coverage began. It did contain live M1.23–M2.4 events marked `automatic`; the transaction above proves those provisional facts fail closed. No fabricated fixture was used to claim a final happy-path consume. The approved-consume-replay run remains pending until an eligible real USGS event becomes `reviewed`; all fail-closed and scope controls on the final deployment are verified.
 
 ## Legacy v1 deployment
 
