@@ -29,6 +29,7 @@ Judgment authority and execution authority are deliberately separate. QuakeSLA p
 - Chain ID: `61997`
 - Runner: `py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng`
 - Explorer: <https://explorer-studio-dev.genlayer.com/>
+- Contract: `0x7D2558EE3D6eA3c24dB5edD9D2CdC613C24e9659`
 
 The completed contract is [`contracts/quake_sla.py`](contracts/quake_sla.py). The previously deployed `USGSFetchProbe` is evidence that Studio Next validators can fetch and reach strict consensus over the selected USGS source; it is not the production QuakeSLA address.
 
@@ -89,10 +90,10 @@ The caller cannot provide a hostname, path, scheme or verdict. Event identifiers
 
 ## Deployment checklist
 
-- Deploy `contracts/quake_sla.py` on Studio Next.
+- Deployment complete: `0x7D2558EE3D6eA3c24dB5edD9D2CdC613C24e9659` on Studio Next.
 - Require both accepted/finalized lifecycle **and** `FINISHED_WITH_RETURN`.
-- Set the deployed address in `frontend/.env.local`.
-- Run one live approved branch and record the receipt, state read and validator votes.
+- Production address is published in `frontend/.env.example`; copy it to the ignored `frontend/.env.local` for local development.
+- Live approved and one-time consume branches are recorded in `docs/LIVE_EVIDENCE.md`.
 - Run at least one denied branch and one authorization/consume rejection.
 - Rebuild the static frontend and deploy `frontend/out` to Cloudflare Pages.
 - Record the mandatory demo video showing wallet connection, fee panel, consensus result and on-chain evidence explorer.
