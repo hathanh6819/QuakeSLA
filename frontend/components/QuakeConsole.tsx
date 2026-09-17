@@ -42,7 +42,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
 }
 
-export function QuakeConsole() {
+export function QuakeConsole({ page = "home" }: { page?: "home" | "console" }) {
   const wallet = useWallet();
   const kit = useTransactionKit(wallet.address);
   const contractAddress = getContractAddress();
@@ -132,25 +132,26 @@ export function QuakeConsole() {
 
   return <>
     <header className="topbar">
-      <a href="#top" className="brand" aria-label="QuakeSLA home">
+      <a href="/" className="brand" aria-label="QuakeSLA home">
         <span className="brand-mark"><img src="/quake-sla-logo.png" alt="" /></span>
         <span><strong>QuakeSLA</strong><small>Verifiable service credits</small></span>
       </a>
-      <nav><a href="#workflow">Workflow</a><a href="#console">Console</a><a href="#evidence">Evidence</a></nav>
+      <nav><a href="/#workflow">Workflow</a><a href="/console">Console</a><a href="/console#evidence">Evidence</a><a href="/#faq">FAQ</a></nav>
       <button className="wallet-button" onClick={() => wallet.isConnected ? wallet.disconnectWallet() : wallet.connectWallet()}>
         <span className={wallet.isConnected ? "online" : "offline"} />
         <Wallet size={16} /> {wallet.isLoading ? "Checking…" : wallet.isConnected ? short(wallet.address) : "Connect wallet"}
       </button>
     </header>
 
-    <main id="top">
+    <main id="top" className={page === "console" ? "console-page" : undefined}>
+      {page === "home" && <>
       <section className="hero">
         <div className="hero-visual" aria-hidden="true"><div className="hero-scan" /></div>
         <div className="hero-copy">
           <div className="eyebrow"><Sparkles size={14} /> PARAMETRIC SLA JUDGMENT ON GENLAYER</div>
           <h1>When the ground moves,<br /><em>settlement shouldn&apos;t.</em></h1>
           <p>Turn reviewed USGS earthquake evidence into a deterministic, one-time service-credit authorization—validated independently by GenLayer&apos;s consensus network.</p>
-          <div className="hero-actions"><a className="primary-action" href="#console">Launch console <ArrowRight size={17} /></a><a className="ghost-action" href="https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php" target="_blank">View USGS source <ExternalLink size={15} /></a></div>
+          <div className="hero-actions"><a className="primary-action" href="/console">Launch console <ArrowRight size={17} /></a><a className="ghost-action" href="https://earthquake.usgs.gov/earthquakes/feed/v1.0/geojson.php" target="_blank">View USGS source <ExternalLink size={15} /></a></div>
           <div className="trust-row"><span><CheckCircle2 /> Authoritative evidence</span><span><CheckCircle2 /> 5-validator consensus</span><span><CheckCircle2 /> One-time execution</span></div>
         </div>
       </section>
@@ -174,6 +175,8 @@ export function QuakeConsole() {
         </div>
       </section>
 
+      </>}
+      {page === "console" && <>
       <section id="console" className="console-section section-shell">
         <div className="section-heading compact"><div><span>LIVE CONTRACT CONSOLE</span><h2>Operate the full lifecycle.</h2></div><div className="contract-chip"><span className={contractAddress ? "online" : "offline"} />{contractAddress ? short(contractAddress) : "Address required"}</div></div>
         <div className="console-grid">
@@ -240,8 +243,22 @@ export function QuakeConsole() {
           </aside>
         </div>
       </section>
+      </>}
 
+      {page === "home" && <>
       <section className="proof-section section-shell"><div className="proof-copy"><span>WHY DECENTRALIZED JUDGMENT?</span><h2>A source can be public and still need consensus.</h2><p>USGS supplies facts, not your SLA outcome. QuakeSLA makes every validator independently prove that the same reviewed event satisfies the exact policy window, magnitude and geographic scope before authorization can exist.</p><div className="proof-list"><div><CheckCircle2 /><span><strong>No arbitrary evidence URLs</strong>Event IDs are constrained and expanded into a fixed USGS endpoint.</span></div><div><CheckCircle2 /><span><strong>Fail closed under uncertainty</strong>Unavailable, malformed or unreviewed evidence becomes UNRESOLVED—not approval.</span></div><div><CheckCircle2 /><span><strong>Replay-resistant lifecycle</strong>Revisions protect stale calls and authorization can be consumed exactly once.</span></div></div></div><div className="seismic-card"><div className="seismic-top"><span>VALIDATOR AGREEMENT</span><strong>3 / 5 quorum</strong></div><div className="wave-line"><svg viewBox="0 0 640 150" preserveAspectRatio="none"><path d="M0 78 L95 78 L112 76 L124 50 L136 115 L149 18 L162 132 L177 62 L191 87 L210 76 L263 78 L276 68 L287 95 L302 36 L315 113 L330 54 L345 86 L361 75 L410 78 L423 70 L438 101 L451 43 L465 107 L480 61 L494 83 L510 77 L640 78" /></svg></div><div className="validator-row">{[1,2,3,4,5].map((v,i)=><div className={i<3?"active":""} key={v}><span>V{v}</span><small>{i<3?"AGREE":"IDLE"}</small></div>)}</div></div></section>
+      <section id="faq" className="faq-section section-shell">
+        <div className="section-heading"><div><span>FREQUENTLY ASKED QUESTIONS</span><h2>Know the rules before you act.</h2></div><p>What gets verified, who can act, and what an on-chain authorization actually means.</p></div>
+        <div className="faq-list">
+          <details><summary>Does QuakeSLA transfer money or credits automatically?</summary><p>No. The contract determines whether a policy qualifies and records a one-time authorization. A separate, bound execution authority must consume it; actual billing or payment happens outside this contract.</p></details>
+          <details><summary>Where does the earthquake evidence come from?</summary><p>Validators independently fetch the event from the fixed USGS earthquake detail endpoint using its event ID. The caller cannot supply a replacement evidence URL or a verdict.</p></details>
+          <details><summary>What happens if USGS data is missing or not reviewed?</summary><p>The assessment does not grant an authorization. Missing, malformed, or unreviewed evidence is marked unresolved so it can be retried when authoritative data is available.</p></details>
+          <details><summary>Who can create, assess, and consume a policy?</summary><p>A connected wallet creates a policy with its beneficiary and execution authority. The authorized participants can submit an event assessment; only the bound execution authority can consume an approved credit once.</p></details>
+          <details><summary>What do I need to try the live console?</summary><p>Connect a wallet to GenLayer Studio Next (chain ID 61997), hold test GEN for transaction fees, then use the separate console page to create a future coverage policy, assess a reviewed USGS event, and inspect the receipt.</p></details>
+        </div>
+        <a className="primary-action faq-action" href="/console">Open live console <ArrowRight size={17} /></a>
+      </section>
+      </>}
     </main>
     <footer><div className="brand compact"><span className="brand-mark"><img src="/quake-sla-logo.png" alt="" /></span><span><strong>QuakeSLA</strong></span></div><p>Authoritative seismic evidence. Decentralized judgment. Explicit execution.</p><div><a href="https://studio-next.genlayer.com" target="_blank">Studio Next</a><a href="https://docs.genlayer.com" target="_blank">Docs</a><a href="https://earthquake.usgs.gov" target="_blank">USGS</a></div></footer>
   </>;
