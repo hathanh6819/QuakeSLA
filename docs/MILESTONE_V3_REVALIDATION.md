@@ -57,4 +57,17 @@ This release changes storage and ABI and therefore requires a new Studio Next co
 - Result: `FINALIZED / FINISHED_WITH_RETURN / MAJORITY_AGREE`
 - Policy #1: `ACTIVE`, revision `1`; coverage begins at `1792226866985` ms.
 
-The remaining lifecycle deliberately waits for a real reviewed USGS earthquake occurring after the registered coverage start. Historical or fabricated evidence will not be used.
+### Initial assessment
+
+A real reviewed earthquake occurred after coverage began:
+
+- USGS event: [`us6000u2z9`](https://earthquake.usgs.gov/earthquakes/eventpage/us6000u2z9)
+- Event: M4.8, 110 km NE of Norsup, Vanuatu, event time `1792227591583` ms.
+- Assessment: [`0xa80b73…59af6`](https://explorer-studio-dev.genlayer.com/tx/0xa80b73c8e7188944283db474233bbe3ae790cfc92a9f5c38362eb9a3adc59af6)
+- Result: `FINALIZED / FINISHED_WITH_RETURN / MAJORITY_AGREE`
+- State: `PENDING_CONFIRMATION`, revision `2`, drift `AWAITING_REVALIDATION`.
+- Initial receipt SHA-256: `e86684c489bd39a11a2b380c171ac026e751349594a195d6aed3c0f6ac1e492c`.
+- Confirmation becomes eligible at `1792250803876` ms (2026-10-17 22:26:43 UTC+7).
+- A fee-free `confirm_event(1, 2)` simulation before that time failed with `REVALIDATION_DELAY_ACTIVE`, proving the delay gate.
+
+The lifecycle now waits for the on-chain confirmation time. Historical or fabricated evidence is not used.

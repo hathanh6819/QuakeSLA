@@ -32,8 +32,16 @@
     "minimum_magnitude_tenths": 10,
     "create_transaction": "0x97b320c95664bf51a367efc625c2debe1e19440e6e260d4244d25a8adb9897c3",
     "create_result": "FINALIZED / FINISHED_WITH_RETURN / MAJORITY_AGREE",
-    "state": "ACTIVE",
-    "revision": 1
+    "state": "PENDING_CONFIRMATION",
+    "revision": 2,
+    "event_id": "us6000u2z9",
+    "event_magnitude_tenths": 48,
+    "event_time_ms": 1792227591583,
+    "initial_evidence_sha256": "e86684c489bd39a11a2b380c171ac026e751349594a195d6aed3c0f6ac1e492c",
+    "assessment_transaction": "0xa80b73c8e7188944283db474233bbe3ae790cfc92a9f5c38362eb9a3adc59af6",
+    "assessment_result": "FINALIZED / FINISHED_WITH_RETURN / MAJORITY_AGREE",
+    "confirmation_eligible_at_ms": 1792250803876,
+    "early_confirmation_simulation": "REVALIDATION_DELAY_ACTIVE"
   },
-  "status": "SOURCE_ABI_AND_POLICY_CREATION_VERIFIED_AWAITING_COVERED_EVENT"
+  "status": "INITIAL_ASSESSMENT_VERIFIED_AWAITING_REVALIDATION_DELAY"
 }
