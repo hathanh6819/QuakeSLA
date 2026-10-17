@@ -1,6 +1,6 @@
 # QuakeSLA
 
-QuakeSLA turns reviewed USGS earthquake records into replay-resistant service-credit authorizations on GenLayer. It is designed for cloud, telecom, logistics, data-center and API providers whose contracts contain objective seismic force-majeure or regional-availability clauses.
+QuakeSLA turns twice-verified USGS earthquake records into replay-resistant service-credit authorizations on GenLayer. It is designed for cloud, telecom, logistics, data-center and API providers whose contracts contain objective seismic force-majeure or regional-availability clauses.
 
 The contract does **not** transfer funds and does not accept a caller-provided verdict. It binds the parties and policy terms first, then every validator independently fetches the canonical USGS event record and recomputes whether the event satisfies the committed time window, geographic bounding box and magnitude threshold. A separately bound execution authority may consume an approved authorization once.
 
@@ -39,9 +39,10 @@ The completed contract is [`contracts/quake_sla.py`](contracts/quake_sla.py). Th
 
 1. **Create policy** — provider commits beneficiary, execution authority, service, region, magnitude, coverage window and geographic bounds.
 2. **Assess event** — owner or beneficiary supplies only a constrained USGS event ID. The contract builds the fixed government endpoint.
-3. **Validator judgment** — validators require an exact event identity, reviewed USGS status, earthquake type, bounded response and valid coordinates. They recompute every policy predicate.
-4. **Fail closed** — missing, malformed, oversized, unreviewed or unavailable evidence becomes `UNRESOLVED`, never approval. A valid but non-matching event records `DENIED` without destroying coverage for later events.
-5. **Consume once** — only the bound execution authority can consume `READY`; revision checks reject stale calls and state prevents replay.
+3. **Initial validator judgment** — validators require an exact event identity, reviewed USGS status, earthquake type, bounded response and valid coordinates. A qualifying event becomes `PENDING_CONFIRMATION`, not immediately executable.
+4. **Delayed revalidation** — after six hours, validators fetch the same USGS event again. Both receipts and any material drift remain on-chain; corrected evidence can revoke the candidate authorization.
+5. **Fail closed** — missing, malformed, oversized, unreviewed or unavailable evidence never produces `READY`. A valid but non-matching event records `DENIED` without destroying coverage for later events.
+6. **Consume once** — only the bound execution authority can consume an authorization that passed both assessments; revision checks reject stale calls and state prevents replay.
 
 Coverage cannot be registered retroactively: its start must be in the future at creation time. Each policy also commits a canonical agreement ID, SHA-256 action digest, credit unit and maximum credit. Consumption must match that scope exactly.
 
@@ -51,10 +52,12 @@ Coverage cannot be registered retroactively: its start must be in the future at 
 | --- | --- | --- |
 | `create_policy(...)` | write | Pre-register a unique agreement, action digest, credit cap, parties and future coverage terms |
 | `assess_event(policy_id, event_id, expected_revision)` | write | Fetch USGS and produce consensus receipt |
+| `confirm_event(policy_id, expected_revision)` | write | Re-fetch the same event after the finality delay and detect evidence drift |
 | `consume_authorization(policy_id, expected_revision, action_digest, credit_amount)` | write | One-time, scope-bound executor acknowledgement |
 | `cancel_policy(policy_id, expected_revision)` | write | Owner cancellation only before coverage starts |
 | `get_policy(policy_id)` | view | Canonical policy/lifecycle JSON |
 | `get_evidence(policy_id)` | view | Canonical USGS evidence receipt |
+| `get_evidence_history(policy_id)` | view | Initial and confirmation receipts, delay, attempts and drift classification |
 | `get_policy_count()` | view | Number of registered policies |
 
 ## Local verification
@@ -69,7 +72,7 @@ npm run lint
 npm run build
 ```
 
-The direct suite covers approval, non-terminal denials, outside-window denial, outside-region denial, unreviewed fail-closed behavior, identity mismatch, URL/path injection rejection, stale revision rejection, unauthorized consumption, replay prevention, retroactive-policy rejection, duplicate-agreement rejection, action-digest mismatch, consumed-amount accounting and credit-cap enforcement. The current Windows `gltest` package cannot execute the Studio Next runner because its message codec predates that runner; do not replace the production dependency hash to make an outdated harness pass. Contract lint, frontend tests/build and live Studio Next checks remain reproducible now; run the direct suite when the matching runner lands in `gltest` or in the official Studio test environment.
+The direct suite additionally covers early-confirmation rejection, stable revalidation, eligibility-revoking drift and material drift that remains eligible. The current Windows `gltest` package cannot execute the Studio Next runner because its message codec predates that runner; do not replace the production dependency hash to make an outdated harness pass. Contract lint, frontend tests/build and live Studio Next checks remain reproducible now; run the direct suite when the matching runner lands in `gltest` or in the official Studio test environment.
 
 ## Frontend
 
@@ -93,6 +96,8 @@ The only runtime evidence origin is the USGS Earthquake Hazards Program detail f
 The caller cannot provide a hostname, path, scheme or verdict. Event identifiers are length and character constrained before the fixed URL is constructed.
 
 ## Deployment checklist
+
+> Protocol v3 changes storage and ABI. The production frontend must remain on the verified v2 address until v3 is deployed and its two-fetch lifecycle is proven live.
 
 - Use the final Studio Next address already recorded in `frontend/.env.example`.
 - Require both accepted/finalized lifecycle **and** `FINISHED_WITH_RETURN`.

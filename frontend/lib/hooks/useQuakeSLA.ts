@@ -32,6 +32,7 @@ export function usePolicy(policyId: number) {
     queryFn: async () => ({
       policy: await contract!.getPolicy(policyId),
       evidence: await contract!.getEvidence(policyId),
+      history: await contract!.getEvidenceHistory(policyId),
     }),
     enabled: !!contract && policyId > 0,
     retry: false,

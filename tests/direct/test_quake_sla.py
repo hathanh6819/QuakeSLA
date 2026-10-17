@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta
 from unittest.mock import patch
 import pytest
 
@@ -51,6 +52,11 @@ def create_policy(contract, agreement_id="SLA-2026-001", action_digest=ACTION_DI
     )
 
 
+def warp_past_revalidation(direct_vm):
+    current = datetime.fromisoformat(direct_vm._datetime.replace("Z", "+00:00"))
+    direct_vm.warp((current + timedelta(hours=7)).isoformat())
+
+
 def test_policy_registration_and_views(direct_vm, deploy_quake):
     direct_vm.sender = OWNER
     contract = deploy_quake()
@@ -70,7 +76,9 @@ def test_reviewed_matching_event_authorizes(direct_vm, deploy_quake):
     receipt = json.loads(contract.assess_event(1, "us7000thsp", 1))
     assert receipt["verdict"] == "APPROVED"
     assert receipt["reason"] == "USGS_REVIEWED_EVENT_MATCH"
-    assert json.loads(contract.get_policy(1))["status"] == "READY"
+    policy = json.loads(contract.get_policy(1))
+    assert policy["status"] == "PENDING_CONFIRMATION"
+    assert policy["evidence_drift"] == "AWAITING_REVALIDATION"
 
 
 @pytest.mark.parametrize(
@@ -102,7 +110,7 @@ def test_denied_claim_does_not_destroy_future_coverage(direct_vm, deploy_quake):
     direct_vm.mock_web(r".*us7000next\.geojson", {"status": 200, "body": json.dumps(event(event_id="us7000next"))})
     second = json.loads(contract.assess_event(1, "us7000next", 2))
     assert second["verdict"] == "APPROVED"
-    assert json.loads(contract.get_policy(1))["status"] == "READY"
+    assert json.loads(contract.get_policy(1))["status"] == "PENDING_CONFIRMATION"
 
 
 def test_unreviewed_event_fails_closed_and_can_retry(direct_vm, deploy_quake):
@@ -149,12 +157,14 @@ def test_only_execution_authority_can_consume_once(direct_vm, deploy_quake):
     create_policy(contract)
     direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event())})
     contract.assess_event(1, "us7000thsp", 1)
+    warp_past_revalidation(direct_vm)
+    contract.confirm_event(1, 2)
     direct_vm.sender = EXECUTOR
-    assert contract.consume_authorization(1, 2, ACTION_DIGEST, 10000) == "CONSUMED"
+    assert contract.consume_authorization(1, 3, ACTION_DIGEST, 10000) == "CONSUMED"
     policy = json.loads(contract.get_policy(1))
     assert policy["consumed_amount"] == 10000
     with pytest.raises(Exception, match="STALE_REVISION|AUTHORIZATION_ALREADY_CONSUMED|AUTHORIZATION_NOT_READY"):
-        contract.consume_authorization(1, 2, ACTION_DIGEST, 10000)
+        contract.consume_authorization(1, 3, ACTION_DIGEST, 10000)
 
 
 def test_unauthorized_consumer_rejected(direct_vm, deploy_quake):
@@ -163,8 +173,10 @@ def test_unauthorized_consumer_rejected(direct_vm, deploy_quake):
     create_policy(contract)
     direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event())})
     contract.assess_event(1, "us7000thsp", 1)
+    warp_past_revalidation(direct_vm)
+    contract.confirm_event(1, 2)
     with pytest.raises(Exception, match="ONLY_EXECUTION_AUTHORITY"):
-        contract.consume_authorization(1, 2, ACTION_DIGEST, 10000)
+        contract.consume_authorization(1, 3, ACTION_DIGEST, 10000)
 
 
 def test_retroactive_policy_rejected(direct_vm, deploy_quake):
@@ -194,9 +206,67 @@ def test_consume_scope_is_bound(direct_vm, deploy_quake):
     create_policy(contract)
     direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event())})
     contract.assess_event(1, "us7000thsp", 1)
+    warp_past_revalidation(direct_vm)
+    contract.confirm_event(1, 2)
     direct_vm.sender = EXECUTOR
     with pytest.raises(Exception, match="ACTION_DIGEST_MISMATCH"):
-        contract.consume_authorization(1, 2, "sha256:" + "b" * 64, 10000)
+        contract.consume_authorization(1, 3, "sha256:" + "b" * 64, 10000)
     with pytest.raises(Exception, match="CREDIT_AMOUNT_OUT_OF_SCOPE"):
-        contract.consume_authorization(1, 2, ACTION_DIGEST, 10001)
-    assert contract.consume_authorization(1, 2, ACTION_DIGEST, 10000) == "CONSUMED"
+        contract.consume_authorization(1, 3, ACTION_DIGEST, 10001)
+    assert contract.consume_authorization(1, 3, ACTION_DIGEST, 10000) == "CONSUMED"
+
+
+def test_confirmation_delay_blocks_early_finality(direct_vm, deploy_quake):
+    direct_vm.sender = OWNER
+    contract = deploy_quake()
+    create_policy(contract)
+    direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event())})
+    contract.assess_event(1, "us7000thsp", 1)
+    with pytest.raises(Exception, match="REVALIDATION_DELAY_ACTIVE"):
+        contract.confirm_event(1, 2)
+
+
+def test_stable_revalidation_unlocks_authorization(direct_vm, deploy_quake):
+    direct_vm.sender = OWNER
+    contract = deploy_quake()
+    create_policy(contract)
+    payload = event()
+    direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(payload)})
+    contract.assess_event(1, "us7000thsp", 1)
+    warp_past_revalidation(direct_vm)
+    receipt = json.loads(contract.confirm_event(1, 2))
+    assert receipt["verdict"] == "APPROVED"
+    policy = json.loads(contract.get_policy(1))
+    assert policy["status"] == "READY"
+    assert policy["evidence_drift"] == "UNCHANGED"
+    history = json.loads(contract.get_evidence_history(1))
+    assert history["initial"]["sha256"] == history["confirmation"]["sha256"]
+
+
+def test_material_drift_can_revoke_candidate(direct_vm, deploy_quake):
+    direct_vm.sender = OWNER
+    contract = deploy_quake()
+    create_policy(contract)
+    direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event())})
+    contract.assess_event(1, "us7000thsp", 1)
+    warp_past_revalidation(direct_vm)
+    direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event(mag=3.2))})
+    receipt = json.loads(contract.confirm_event(1, 2))
+    assert receipt["verdict"] == "DENIED"
+    policy = json.loads(contract.get_policy(1))
+    assert policy["status"] == "ACTIVE"
+    assert policy["evidence_drift"] == "NO_LONGER_ELIGIBLE"
+
+
+def test_material_drift_still_eligible_is_explicit(direct_vm, deploy_quake):
+    direct_vm.sender = OWNER
+    contract = deploy_quake()
+    create_policy(contract)
+    direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event(mag=4.8))})
+    contract.assess_event(1, "us7000thsp", 1)
+    warp_past_revalidation(direct_vm)
+    direct_vm.mock_web(r".*us7000thsp\.geojson", {"status": 200, "body": json.dumps(event(mag=5.0))})
+    contract.confirm_event(1, 2)
+    policy = json.loads(contract.get_policy(1))
+    assert policy["status"] == "READY"
+    assert policy["evidence_drift"] == "MATERIAL_CHANGE_STILL_ELIGIBLE"

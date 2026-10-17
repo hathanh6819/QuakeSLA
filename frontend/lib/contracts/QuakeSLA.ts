@@ -5,6 +5,9 @@ export interface QuakePolicy {
   action_digest: string;
   agreement_id: string;
   assessment_attempts: number;
+  confirmation_attempts: number;
+  confirmation_eligible_at_ms: number;
+  confirmed_at_ms: number;
   beneficiary: string;
   consumed: number;
   consumed_amount: number;
@@ -14,6 +17,7 @@ export interface QuakePolicy {
   created_at_ms: number;
   credit_unit: string;
   event_id: string;
+  evidence_drift: EvidenceDrift;
   executor: string;
   max_lat_e4: number;
   max_lon_e4: number;
@@ -26,8 +30,19 @@ export interface QuakePolicy {
   region: string;
   revision: number;
   service: string;
-  status: "ACTIVE" | "UNRESOLVED" | "READY" | "DENIED" | "CONSUMED" | "CANCELLED";
+  status: "ACTIVE" | "UNRESOLVED" | "PENDING_CONFIRMATION" | "READY" | "DENIED" | "CONSUMED" | "CANCELLED";
   verdict: "UNASSESSED" | "UNRESOLVED" | "APPROVED" | "DENIED";
+}
+
+export type EvidenceDrift = "NOT_ASSESSED" | "NOT_APPLICABLE" | "AWAITING_REVALIDATION" | "UNCHANGED" | "NON_MATERIAL_SOURCE_CHANGE" | "MATERIAL_CHANGE_STILL_ELIGIBLE" | "NO_LONGER_ELIGIBLE" | "CONFIRMATION_UNRESOLVED";
+
+export interface EvidenceHistory {
+  initial: QuakeEvidence | null;
+  confirmation: QuakeEvidence | null;
+  confirmation_attempts: number;
+  confirmation_eligible_at_ms: number;
+  confirmed_at_ms: number;
+  drift: EvidenceDrift;
 }
 
 export interface QuakeEvidence {
@@ -82,5 +97,14 @@ export class QuakeSLAContract {
       args: [policyId],
     }));
     return value ? JSON.parse(value) as QuakeEvidence : null;
+  }
+
+  async getEvidenceHistory(policyId: number): Promise<EvidenceHistory> {
+    const value = await this.client.readContract({
+      address: this.address,
+      functionName: "get_evidence_history",
+      args: [policyId],
+    });
+    return JSON.parse(String(value)) as EvidenceHistory;
   }
 }

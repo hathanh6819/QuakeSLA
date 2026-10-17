@@ -1,4 +1,4 @@
-# v0.3.0
+# v0.4.0
 # { "Depends": "py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng" }
 
 import hashlib
@@ -14,6 +14,7 @@ USGS_DETAIL_SUFFIX = ".geojson"
 MAX_SOURCE_BYTES = 20000
 MAX_POLICIES_PER_OWNER = 100
 MAX_COVERAGE_DURATION_MS = 5 * 365 * 24 * 60 * 60 * 1000
+REVALIDATION_DELAY_MS = 6 * 60 * 60 * 1000
 
 
 def _sender() -> str:
@@ -78,6 +79,12 @@ class QuakeSLA(gl.contract.Contract):
     assessment_reason: TreeMap[u256, str]
     assessment_evidence: TreeMap[u256, str]
     assessment_attempts: TreeMap[u256, u256]
+    confirmation_attempts: TreeMap[u256, u256]
+    initial_evidence: TreeMap[u256, str]
+    confirmation_evidence: TreeMap[u256, str]
+    confirmation_eligible_at_ms: TreeMap[u256, u256]
+    confirmed_at_ms: TreeMap[u256, u256]
+    evidence_drift: TreeMap[u256, str]
     authorization_consumed: TreeMap[u256, u256]
     authorization_consumed_by: TreeMap[u256, str]
     authorization_consumed_amount: TreeMap[u256, u256]
@@ -171,6 +178,10 @@ class QuakeSLA(gl.contract.Contract):
         self.policy_status[policy_id] = "ACTIVE"
         self.assessment_verdict[policy_id] = "UNASSESSED"
         self.assessment_attempts[policy_id] = 0
+        self.confirmation_attempts[policy_id] = 0
+        self.confirmation_eligible_at_ms[policy_id] = 0
+        self.confirmed_at_ms[policy_id] = 0
+        self.evidence_drift[policy_id] = "NOT_ASSESSED"
         self.authorization_consumed[policy_id] = 0
         self.authorization_consumed_amount[policy_id] = 0
         return policy_id
@@ -216,60 +227,7 @@ class QuakeSLA(gl.contract.Contract):
         max_lon = int(self.policy_max_lon_e4[key])
 
         def observe() -> str:
-            try:
-                response = gl.nondet.web.get(source_url)
-                body = response.body or b""
-                if len(body) == 0 or len(body) > MAX_SOURCE_BYTES:
-                    return _stable({"kind": "UNRESOLVED", "reason": "SOURCE_SIZE_INVALID"})
-                data = json.loads(body.decode("utf-8"))
-                if data.get("type") != "Feature" or data.get("id") != event:
-                    return _stable({"kind": "UNRESOLVED", "reason": "EVENT_IDENTITY_MISMATCH"})
-                properties = data.get("properties") or {}
-                geometry = data.get("geometry") or {}
-                coordinates = geometry.get("coordinates") or []
-                if len(coordinates) < 2:
-                    return _stable({"kind": "UNRESOLVED", "reason": "COORDINATES_MISSING"})
-                status = str(properties.get("status", "")).lower()
-                event_type = str(properties.get("type", "")).lower()
-                magnitude = properties.get("mag")
-                event_time = properties.get("time")
-                if status != "reviewed":
-                    return _stable({"kind": "UNRESOLVED", "reason": "USGS_NOT_REVIEWED"})
-                if event_type != "earthquake" or not isinstance(magnitude, (int, float)) or not isinstance(event_time, int):
-                    return _stable({"kind": "UNRESOLVED", "reason": "EVENT_FIELDS_INVALID"})
-                magnitude_tenths = int(round(float(magnitude) * 10))
-                longitude_e4 = int(round(float(coordinates[0]) * 10000))
-                latitude_e4 = int(round(float(coordinates[1]) * 10000))
-                within_time = start_ms <= event_time <= end_ms
-                within_region = min_lat <= latitude_e4 <= max_lat and min_lon <= longitude_e4 <= max_lon
-                meets_magnitude = magnitude_tenths >= min_mag
-                approved = within_time and within_region and meets_magnitude
-                if not within_time:
-                    reason = "OUTSIDE_COVERAGE_WINDOW"
-                elif not within_region:
-                    reason = "OUTSIDE_COVERED_REGION"
-                elif not meets_magnitude:
-                    reason = "BELOW_MAGNITUDE_THRESHOLD"
-                else:
-                    reason = "USGS_REVIEWED_EVENT_MATCH"
-                return _stable({
-                    "action_digest": self.policy_action_digest[key],
-                    "agreement_id": self.policy_agreement_id[key],
-                    "credit_unit": self.policy_credit_unit[key],
-                    "event_id": event,
-                    "event_time_ms": event_time,
-                    "latitude_e4": latitude_e4,
-                    "longitude_e4": longitude_e4,
-                    "magnitude_tenths": magnitude_tenths,
-                    "place": str(properties.get("place", ""))[:160],
-                    "reason": reason,
-                    "sha256": hashlib.sha256(body).hexdigest(),
-                    "source": source_url,
-                    "status": status,
-                    "verdict": "APPROVED" if approved else "DENIED",
-                })
-            except Exception:
-                return _stable({"kind": "UNRESOLVED", "reason": "SOURCE_UNAVAILABLE_OR_MALFORMED"})
+            return self._observe_event(key, event, source_url, min_mag, start_ms, end_ms, min_lat, max_lat, min_lon, max_lon)
 
         receipt = gl.eq_principle.strict_eq(observe)
         parsed = json.loads(receipt)
@@ -282,13 +240,81 @@ class QuakeSLA(gl.contract.Contract):
         self.assessment_attempts[key] = self.assessment_attempts[key] + 1
         self.policy_revision[key] = self.policy_revision[key] + 1
         if verdict == "APPROVED":
-            self.policy_status[key] = "READY"
+            self.initial_evidence[key] = receipt
+            self.confirmation_evidence[key] = ""
+            self.confirmation_eligible_at_ms[key] = _now_ms() + REVALIDATION_DELAY_MS
+            self.confirmed_at_ms[key] = 0
+            self.evidence_drift[key] = "AWAITING_REVALIDATION"
+            self.policy_status[key] = "PENDING_CONFIRMATION"
         elif verdict == "DENIED":
+            self.initial_evidence[key] = ""
+            self.confirmation_evidence[key] = ""
+            self.confirmation_eligible_at_ms[key] = 0
+            self.confirmed_at_ms[key] = 0
+            self.evidence_drift[key] = "NOT_APPLICABLE"
             # A non-matching event denies only that claim. It must not destroy
             # an otherwise-active policy that may cover a later event.
             self.policy_status[key] = "ACTIVE"
         else:
+            self.initial_evidence[key] = ""
+            self.confirmation_evidence[key] = ""
+            self.confirmation_eligible_at_ms[key] = 0
+            self.confirmed_at_ms[key] = 0
+            self.evidence_drift[key] = "NOT_APPLICABLE"
             self.policy_status[key] = "UNRESOLVED"
+        return receipt
+
+    @gl.public.write
+    def confirm_event(self, policy_id: u256, expected_revision: u256) -> str:
+        key = policy_id
+        self._require_policy(key)
+        caller = _sender()
+        if caller != self.policy_owner[key] and caller != self.policy_beneficiary[key]:
+            raise gl.vm.UserError("ONLY_POLICY_PARTY")
+        if self.policy_revision[key] != expected_revision:
+            raise gl.vm.UserError("STALE_REVISION")
+        if self.policy_status[key] != "PENDING_CONFIRMATION":
+            raise gl.vm.UserError("CONFIRMATION_NOT_PENDING")
+        if _now_ms() < int(self.confirmation_eligible_at_ms[key]):
+            raise gl.vm.UserError("REVALIDATION_DELAY_ACTIVE")
+
+        event = self.assessment_event_id[key]
+        source_url = USGS_DETAIL_PREFIX + event + USGS_DETAIL_SUFFIX
+        min_mag = int(self.policy_min_magnitude_tenths[key])
+        start_ms = int(self.policy_coverage_start_ms[key])
+        end_ms = int(self.policy_coverage_end_ms[key])
+        min_lat = int(self.policy_min_lat_e4[key])
+        max_lat = int(self.policy_max_lat_e4[key])
+        min_lon = int(self.policy_min_lon_e4[key])
+        max_lon = int(self.policy_max_lon_e4[key])
+
+        def observe() -> str:
+            return self._observe_event(key, event, source_url, min_mag, start_ms, end_ms, min_lat, max_lat, min_lon, max_lon)
+
+        receipt = gl.eq_principle.strict_eq(observe)
+        parsed = json.loads(receipt)
+        verdict = str(parsed.get("verdict", parsed.get("kind", "UNRESOLVED")))
+        initial = json.loads(self.initial_evidence[key])
+        material_fields = ("event_id", "event_time_ms", "latitude_e4", "longitude_e4", "magnitude_tenths", "status")
+        material_changed = any(initial.get(field) != parsed.get(field) for field in material_fields)
+        digest_changed = initial.get("sha256") != parsed.get("sha256")
+
+        self.confirmation_evidence[key] = receipt
+        self.assessment_evidence[key] = receipt
+        self.assessment_verdict[key] = verdict
+        self.assessment_reason[key] = str(parsed.get("reason", "UNKNOWN"))
+        self.confirmation_attempts[key] = self.confirmation_attempts[key] + 1
+        self.policy_revision[key] = self.policy_revision[key] + 1
+        if verdict == "APPROVED":
+            self.confirmed_at_ms[key] = _now_ms()
+            self.evidence_drift[key] = "MATERIAL_CHANGE_STILL_ELIGIBLE" if material_changed else ("NON_MATERIAL_SOURCE_CHANGE" if digest_changed else "UNCHANGED")
+            self.policy_status[key] = "READY"
+        elif verdict == "DENIED":
+            self.evidence_drift[key] = "NO_LONGER_ELIGIBLE"
+            self.policy_status[key] = "ACTIVE"
+        else:
+            self.evidence_drift[key] = "CONFIRMATION_UNRESOLVED"
+            self.policy_status[key] = "PENDING_CONFIRMATION"
         return receipt
 
     @gl.public.write
@@ -325,6 +351,9 @@ class QuakeSLA(gl.contract.Contract):
         return _stable({
             "action_digest": self.policy_action_digest[key],
             "assessment_attempts": int(self.assessment_attempts[key]),
+            "confirmation_attempts": int(self.confirmation_attempts[key]),
+            "confirmation_eligible_at_ms": int(self.confirmation_eligible_at_ms[key]),
+            "confirmed_at_ms": int(self.confirmed_at_ms[key]),
             "agreement_id": self.policy_agreement_id[key],
             "beneficiary": self.policy_beneficiary[key],
             "consumed": int(self.authorization_consumed[key]),
@@ -335,6 +364,7 @@ class QuakeSLA(gl.contract.Contract):
             "created_at_ms": int(self.policy_created_at_ms[key]),
             "credit_unit": self.policy_credit_unit[key],
             "event_id": self.assessment_event_id.get(key) or "",
+            "evidence_drift": self.evidence_drift.get(key) or "NOT_ASSESSED",
             "executor": self.policy_executor[key],
             "max_lat_e4": int(self.policy_max_lat_e4[key]),
             "max_lon_e4": int(self.policy_max_lon_e4[key]),
@@ -356,6 +386,62 @@ class QuakeSLA(gl.contract.Contract):
         key = policy_id
         self._require_policy(key)
         return self.assessment_evidence.get(key) or ""
+
+    @gl.public.view
+    def get_evidence_history(self, policy_id: u256) -> str:
+        key = policy_id
+        self._require_policy(key)
+        initial = self.initial_evidence.get(key) or ""
+        confirmation = self.confirmation_evidence.get(key) or ""
+        return _stable({
+            "confirmation": json.loads(confirmation) if confirmation else None,
+            "confirmation_attempts": int(self.confirmation_attempts[key]),
+            "confirmation_eligible_at_ms": int(self.confirmation_eligible_at_ms[key]),
+            "confirmed_at_ms": int(self.confirmed_at_ms[key]),
+            "drift": self.evidence_drift.get(key) or "NOT_ASSESSED",
+            "initial": json.loads(initial) if initial else None,
+        })
+
+    def _observe_event(self, key: u256, event: str, source_url: str, min_mag: int, start_ms: int, end_ms: int, min_lat: int, max_lat: int, min_lon: int, max_lon: int) -> str:
+        try:
+            response = gl.nondet.web.get(source_url)
+            body = response.body or b""
+            if len(body) == 0 or len(body) > MAX_SOURCE_BYTES:
+                return _stable({"kind": "UNRESOLVED", "reason": "SOURCE_SIZE_INVALID"})
+            data = json.loads(body.decode("utf-8"))
+            if data.get("type") != "Feature" or data.get("id") != event:
+                return _stable({"kind": "UNRESOLVED", "reason": "EVENT_IDENTITY_MISMATCH"})
+            properties = data.get("properties") or {}
+            geometry = data.get("geometry") or {}
+            coordinates = geometry.get("coordinates") or []
+            if len(coordinates) < 2:
+                return _stable({"kind": "UNRESOLVED", "reason": "COORDINATES_MISSING"})
+            status = str(properties.get("status", "")).lower()
+            event_type = str(properties.get("type", "")).lower()
+            magnitude = properties.get("mag")
+            event_time = properties.get("time")
+            if status != "reviewed":
+                return _stable({"kind": "UNRESOLVED", "reason": "USGS_NOT_REVIEWED"})
+            if event_type != "earthquake" or not isinstance(magnitude, (int, float)) or not isinstance(event_time, int):
+                return _stable({"kind": "UNRESOLVED", "reason": "EVENT_FIELDS_INVALID"})
+            magnitude_tenths = int(round(float(magnitude) * 10))
+            longitude_e4 = int(round(float(coordinates[0]) * 10000))
+            latitude_e4 = int(round(float(coordinates[1]) * 10000))
+            within_time = start_ms <= event_time <= end_ms
+            within_region = min_lat <= latitude_e4 <= max_lat and min_lon <= longitude_e4 <= max_lon
+            meets_magnitude = magnitude_tenths >= min_mag
+            approved = within_time and within_region and meets_magnitude
+            reason = "OUTSIDE_COVERAGE_WINDOW" if not within_time else ("OUTSIDE_COVERED_REGION" if not within_region else ("BELOW_MAGNITUDE_THRESHOLD" if not meets_magnitude else "USGS_REVIEWED_EVENT_MATCH"))
+            return _stable({
+                "action_digest": self.policy_action_digest[key], "agreement_id": self.policy_agreement_id[key],
+                "credit_unit": self.policy_credit_unit[key], "event_id": event, "event_time_ms": event_time,
+                "latitude_e4": latitude_e4, "longitude_e4": longitude_e4, "magnitude_tenths": magnitude_tenths,
+                "place": str(properties.get("place", ""))[:160], "reason": reason,
+                "sha256": hashlib.sha256(body).hexdigest(), "source": source_url, "status": status,
+                "verdict": "APPROVED" if approved else "DENIED",
+            })
+        except Exception:
+            return _stable({"kind": "UNRESOLVED", "reason": "SOURCE_UNAVAILABLE_OR_MALFORMED"})
 
     def _require_policy(self, key: u256) -> None:
         if key == 0 or key > self.policy_count:

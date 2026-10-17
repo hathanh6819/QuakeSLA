@@ -5,7 +5,7 @@ import {
   Activity, ArrowRight, BadgeCheck, Braces, CheckCircle2, CircleAlert,
   CloudLightning, ExternalLink, FileCheck2, Gauge, Globe2, Loader2,
   LockKeyhole, MapPin, Radar, RefreshCw, ShieldCheck, Sparkles, Wallet,
-  X, Zap,
+  X, Zap, TimerReset, GitCompareArrows,
 } from "lucide-react";
 import {
   GenLayerTransactionPanel,
@@ -17,6 +17,7 @@ import { useWallet } from "@/lib/genlayer/wallet";
 import { useTransactionKit } from "@/lib/genlayer/kit";
 import { isConfirmedSuccess, transactionFailureLabel } from "@/lib/genlayer/transactionStatus";
 import { usePolicy, usePolicyCount, useRefreshQuakeData } from "@/lib/hooks/useQuakeSLA";
+import { canConfirmEvidence, changedEvidenceFields, confirmationRemainingMs, formatRemaining } from "@/lib/evidenceDrift";
 import { toast } from "sonner";
 
 const short = (value?: string | null) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : "Not connected";
@@ -27,7 +28,7 @@ const dateInput = (offsetDays: number) => {
 };
 
 function StatusPill({ status }: { status?: string }) {
-  const tone = status === "READY" || status === "APPROVED" ? "good" : status === "DENIED" || status === "CANCELLED" ? "bad" : status === "UNRESOLVED" ? "warn" : "neutral";
+  const tone = status === "READY" || status === "APPROVED" || status === "UNCHANGED" ? "good" : status === "DENIED" || status === "CANCELLED" || status === "NO_LONGER_ELIGIBLE" ? "bad" : status === "UNRESOLVED" || status === "PENDING_CONFIRMATION" || status === "CONFIRMATION_UNRESOLVED" ? "warn" : "neutral";
   return <span className={`status-pill ${tone}`}><span className="status-dot" />{status || "UNASSESSED"}</span>;
 }
 
@@ -50,7 +51,8 @@ export function QuakeConsole({ page = "home" }: { page?: "home" | "console" }) {
   const count = usePolicyCount();
   const [lookupId, setLookupId] = useState(1);
   const record = usePolicy(lookupId);
-  const [flow, setFlow] = useState<"create" | "assess" | "consume" | null>(null);
+  const [flow, setFlow] = useState<"create" | "assess" | "confirm" | "consume" | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
   const [beneficiary, setBeneficiary] = useState("");
   const [executor, setExecutor] = useState("");
   const [agreementId, setAgreementId] = useState("SLA-2026-001");
@@ -66,6 +68,8 @@ export function QuakeConsole({ page = "home" }: { page?: "home" | "console" }) {
   const [assessId, setAssessId] = useState("1");
   const [eventId, setEventId] = useState("us7000thsp");
   const [revision, setRevision] = useState("1");
+  const [confirmId, setConfirmId] = useState("1");
+  const [confirmRevision, setConfirmRevision] = useState("2");
   const [consumeId, setConsumeId] = useState("1");
   const [consumeRevision, setConsumeRevision] = useState("2");
   const [consumeDigest, setConsumeDigest] = useState("");
@@ -77,6 +81,11 @@ export function QuakeConsole({ page = "home" }: { page?: "home" | "console" }) {
       setExecutor((v) => v || wallet.address!);
     }
   }, [wallet.address]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const createTx = useMemo<SubmitInput>(() => ({
     kind: "write",
@@ -100,6 +109,11 @@ export function QuakeConsole({ page = "home" }: { page?: "home" | "console" }) {
     kind: "write", address: contractAddress as `0x${string}`, method: "consume_authorization",
     args: [Number(consumeId), Number(consumeRevision), consumeDigest.trim().toLowerCase(), Number(consumeAmount)],
   }), [contractAddress, consumeId, consumeRevision, consumeDigest, consumeAmount]);
+
+  const confirmTx = useMemo<SubmitInput>(() => ({
+    kind: "write", address: contractAddress as `0x${string}`, method: "confirm_event",
+    args: [Number(confirmId), Number(confirmRevision)],
+  }), [contractAddress, confirmId, confirmRevision]);
 
   const requireReady = (event: FormEvent, next: typeof flow) => {
     event.preventDefault();
@@ -170,7 +184,8 @@ export function QuakeConsole({ page = "home" }: { page?: "home" | "console" }) {
             ["01", <Braces key="i" />, "Bind the SLA", "Provider, beneficiary and billing executor commit the coverage window, magnitude threshold and geographic bounding box."],
             ["02", <Globe2 key="i" />, "Fetch canonical evidence", "A party submits only a USGS event ID. Validators construct the fixed government endpoint; arbitrary URLs are rejected by design."],
             ["03", <Activity key="i" />, "Recompute the match", "Reviewed status, timestamp, coordinates and magnitude are normalized into an exact canonical receipt under strict equivalence."],
-            ["04", <BadgeCheck key="i" />, "Consume once", "Only the bound execution authority can consume an approved authorization, preventing replay and separating judgment from payment."],
+            ["04", <TimerReset key="i" />, "Revalidate after finality delay", "Validators fetch the event again after six hours. Material USGS corrections remain visible and can revoke eligibility before execution."],
+            ["05", <BadgeCheck key="i" />, "Consume once", "Only the bound execution authority can consume a twice-verified authorization, preventing replay and separating judgment from payment."],
           ].map(([n, icon, title, text]) => <article className="workflow-card" key={String(n)}><span className="step-number">{n}</span><div className="workflow-icon">{icon}</div><h3>{title}</h3><p>{text}</p></article>)}
         </div>
       </section>
@@ -217,7 +232,16 @@ export function QuakeConsole({ page = "home" }: { page?: "home" | "console" }) {
                 </form>}
               </article>
               <article className="console-card">
-                <div className="card-title"><span><LockKeyhole /> Consume authorization</span><small>Step 3</small></div>
+                <div className="card-title"><span><TimerReset /> Confirm USGS evidence</span><small>Step 3</small></div>
+                {flow === "confirm" && kit ? <TransactionReview onBack={() => setFlow(null)} kit={kit} tx={confirmTx} onDone={done("Evidence confirmation")} /> :
+                <form className="small-form" onSubmit={(e) => requireReady(e, "confirm")}>
+                  <div className="inline-fields"><Field label="Policy ID"><input type="number" min="1" value={confirmId} onChange={e=>setConfirmId(e.target.value)} required /></Field><Field label="Expected revision"><input type="number" min="1" value={confirmRevision} onChange={e=>setConfirmRevision(e.target.value)} required /></Field></div>
+                  <div className="safety-note"><TimerReset /><span>Available six hours after an approved initial assessment. Validators fetch the same USGS event again before authorization.</span></div>
+                  <button className="submit-button secondary" type="submit">Revalidate canonical evidence <GitCompareArrows /></button>
+                </form>}
+              </article>
+              <article className="console-card">
+                <div className="card-title"><span><LockKeyhole /> Consume authorization</span><small>Step 4</small></div>
                 {flow === "consume" && kit ? <TransactionReview onBack={() => setFlow(null)} kit={kit} tx={consumeTx} onDone={done("Authorization consumption")} /> :
                 <form className="small-form" onSubmit={(e) => requireReady(e, "consume")}>
                   <div className="inline-fields"><Field label="Policy ID"><input type="number" min="1" value={consumeId} onChange={e=>setConsumeId(e.target.value)} required /></Field><Field label="Expected revision"><input type="number" min="1" value={consumeRevision} onChange={e=>setConsumeRevision(e.target.value)} required /></Field></div>
@@ -237,7 +261,9 @@ export function QuakeConsole({ page = "home" }: { page?: "home" | "console" }) {
               <div className="policy-head"><div><small>POLICY #{record.data.policy.policy_id}</small><h4>{record.data.policy.service}</h4><p><MapPin /> {record.data.policy.region}</p></div><StatusPill status={record.data.policy.status} /></div>
               <div className="evidence-metrics"><div><span>Threshold</span><strong>M {(record.data.policy.min_magnitude_tenths/10).toFixed(1)}+</strong></div><div><span>Revision</span><strong>{record.data.policy.revision}</strong></div><div><span>Max credit</span><strong>{record.data.policy.max_credit} {record.data.policy.credit_unit}</strong></div></div>
               <div className="receipt muted"><dl><div><dt>Agreement</dt><dd>{record.data.policy.agreement_id}</dd></div><div><dt>Action digest</dt><dd className="mono">{record.data.policy.action_digest}</dd></div></dl></div>
-              <div className="timeline"><div className="done"><i /><span>Policy bound<small>Terms committed on-chain</small></span></div><div className={record.data.policy.verdict !== "UNASSESSED" ? "done" : ""}><i /><span>Evidence assessed<small>{record.data.policy.event_id || "Awaiting USGS event"}</small></span></div><div className={record.data.policy.status === "READY" || record.data.policy.status === "CONSUMED" ? "done" : ""}><i /><span>Authorization ready<small>Strict validator equivalence</small></span></div><div className={record.data.policy.status === "CONSUMED" ? "done" : ""}><i /><span>Consumed once<small>{record.data.policy.consumed_by ? `${record.data.policy.consumed_amount} ${record.data.policy.credit_unit} by ${short(record.data.policy.consumed_by)}` : "Execution authority only"}</small></span></div></div>
+              <div className="timeline"><div className="done"><i /><span>Policy bound<small>Terms committed on-chain</small></span></div><div className={record.data.policy.verdict !== "UNASSESSED" ? "done" : ""}><i /><span>Initial evidence assessed<small>{record.data.policy.event_id || "Awaiting USGS event"}</small></span></div><div className={record.data.policy.status === "READY" || record.data.policy.status === "CONSUMED" ? "done" : ""}><i /><span>Evidence revalidated<small>{record.data.policy.status === "PENDING_CONFIRMATION" ? formatRemaining(confirmationRemainingMs(record.data.policy, nowMs)) : record.data.policy.evidence_drift}</small></span></div><div className={record.data.policy.status === "READY" || record.data.policy.status === "CONSUMED" ? "done" : ""}><i /><span>Authorization ready<small>Two consensus receipts required</small></span></div><div className={record.data.policy.status === "CONSUMED" ? "done" : ""}><i /><span>Consumed once<small>{record.data.policy.consumed_by ? `${record.data.policy.consumed_amount} ${record.data.policy.credit_unit} by ${short(record.data.policy.consumed_by)}` : "Execution authority only"}</small></span></div></div>
+              {record.data.policy.status === "PENDING_CONFIRMATION" && <div className="confirmation-callout"><TimerReset /><div><strong>{canConfirmEvidence(record.data.policy, nowMs) ? "Evidence is ready for confirmation" : "Revalidation delay active"}</strong><span>{formatRemaining(confirmationRemainingMs(record.data.policy, nowMs))} · eligible {new Date(record.data.policy.confirmation_eligible_at_ms).toLocaleString()}</span></div></div>}
+              {(record.data.history.initial || record.data.history.confirmation) && <div className="drift-panel"><div className="receipt-title"><span><GitCompareArrows /> Evidence drift control</span><StatusPill status={record.data.history.drift} /></div><div className="evidence-compare"><EvidenceSnapshot label="Initial" evidence={record.data.history.initial} /><EvidenceSnapshot label="Confirmation" evidence={record.data.history.confirmation} /></div>{changedEvidenceFields(record.data.history).length > 0 && <p className="drift-note">Changed fields: {changedEvidenceFields(record.data.history).join(", ")}</p>}</div>}
               {record.data.evidence ? <div className="receipt"><div className="receipt-title"><span><FileCheck2 /> Canonical receipt</span><StatusPill status={record.data.evidence.verdict || record.data.evidence.kind} /></div><dl><div><dt>Reason</dt><dd>{record.data.evidence.reason}</dd></div>{record.data.evidence.place && <div><dt>Place</dt><dd>{record.data.evidence.place}</dd></div>}{record.data.evidence.magnitude_tenths != null && <div><dt>Magnitude</dt><dd>{(record.data.evidence.magnitude_tenths/10).toFixed(1)}</dd></div>}{record.data.evidence.sha256 && <div><dt>Evidence digest</dt><dd className="mono">{record.data.evidence.sha256}</dd></div>}</dl>{record.data.evidence.source && <a href={record.data.evidence.source} target="_blank">Open authoritative record <ExternalLink /></a>}</div> : <div className="receipt muted"><CloudLightning /><p>No evidence receipt yet. Submit a reviewed USGS event ID to start consensus.</p></div>}
             </> : null}
           </aside>
@@ -262,6 +288,16 @@ export function QuakeConsole({ page = "home" }: { page?: "home" | "console" }) {
     </main>
     <footer><div className="brand compact"><span className="brand-mark"><img src="/quake-sla-logo.png" alt="" /></span><span><strong>QuakeSLA</strong></span></div><p>Authoritative seismic evidence. Decentralized judgment. Explicit execution.</p><div><a href="https://studio-next.genlayer.com" target="_blank">Studio Next</a><a href="https://docs.genlayer.com" target="_blank">Docs</a><a href="https://earthquake.usgs.gov" target="_blank">USGS</a></div></footer>
   </>;
+}
+
+function EvidenceSnapshot({ label, evidence }: { label: string; evidence: { magnitude_tenths?: number; event_time_ms?: number; latitude_e4?: number; longitude_e4?: number; status?: string; sha256?: string } | null }) {
+  return <div className="evidence-snapshot"><small>{label}</small>{evidence ? <dl>
+    <div><dt>Magnitude</dt><dd>{evidence.magnitude_tenths == null ? "—" : (evidence.magnitude_tenths / 10).toFixed(1)}</dd></div>
+    <div><dt>Event time</dt><dd>{evidence.event_time_ms ? new Date(evidence.event_time_ms).toLocaleString() : "—"}</dd></div>
+    <div><dt>Coordinates</dt><dd>{evidence.latitude_e4 == null || evidence.longitude_e4 == null ? "—" : `${(evidence.latitude_e4 / 10000).toFixed(4)}, ${(evidence.longitude_e4 / 10000).toFixed(4)}`}</dd></div>
+    <div><dt>USGS status</dt><dd>{evidence.status || "—"}</dd></div>
+    <div><dt>SHA-256</dt><dd className="mono">{evidence.sha256 || "—"}</dd></div>
+  </dl> : <p>Awaiting second validator fetch.</p>}</div>;
 }
 
 function TransactionReview({ kit, tx, onDone, onBack }: { kit: NonNullable<ReturnType<typeof useTransactionKit>>; tx: SubmitInput; onDone: (status: TrackedStatus) => void; onBack: () => void }) {
