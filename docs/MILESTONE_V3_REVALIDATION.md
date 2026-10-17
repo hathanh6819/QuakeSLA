@@ -48,3 +48,13 @@ The Windows Direct Mode package currently fails while loading its own GenLayer m
 ## Deployment gate
 
 This release changes storage and ABI and therefore requires a new Studio Next contract. Do not point the production frontend at v3 until deployed source parity, initial assessment, early-confirmation rejection, delayed confirmation, `READY`, consumption and replay rejection are verified on the new address.
+
+## Live candidate
+
+- Contract: [`0xafc7939909Af844DEa6431EB3A46fDe7D7f9C713`](https://explorer-studio-dev.genlayer.com/address/0xafc7939909Af844DEa6431EB3A46fDe7D7f9C713)
+- Exact deployed/local source SHA-256: `8f51ded9eeb467c24d4ecd3e71a4eb33cd446367cbddfc7b3791a35753f30782`
+- Policy creation: [`0x97b320…897c3`](https://explorer-studio-dev.genlayer.com/tx/0x97b320c95664bf51a367efc625c2debe1e19440e6e260d4244d25a8adb9897c3)
+- Result: `FINALIZED / FINISHED_WITH_RETURN / MAJORITY_AGREE`
+- Policy #1: `ACTIVE`, revision `1`; coverage begins at `1792226866985` ms.
+
+The remaining lifecycle deliberately waits for a real reviewed USGS earthquake occurring after the registered coverage start. Historical or fabricated evidence will not be used.
