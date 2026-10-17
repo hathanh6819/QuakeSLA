@@ -1,0 +1,26 @@
+{
+  "contract_name": "QuakeSLA",
+  "release": "3.0.0-candidate",
+  "network": "Studio Next",
+  "chain_id": 61997,
+  "rpc_url": "https://studio-next.genlayer.com/api",
+  "address": "0xafc7939909Af844DEa6431EB3A46fDe7D7f9C713",
+  "source_commit": "8ee3dd9",
+  "source_sha256": "8f51ded9eeb467c24d4ecd3e71a4eb33cd446367cbddfc7b3791a35753f30782",
+  "source_size_bytes": 21694,
+  "source_parity_verified": true,
+  "method_count": 9,
+  "methods": [
+    "assess_event",
+    "cancel_policy",
+    "confirm_event",
+    "consume_authorization",
+    "create_policy",
+    "get_evidence",
+    "get_evidence_history",
+    "get_policy",
+    "get_policy_count"
+  ],
+  "initial_policy_count": 0,
+  "status": "SOURCE_AND_ABI_VERIFIED_LIFECYCLE_PENDING"
+}

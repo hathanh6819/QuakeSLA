@@ -32,6 +32,7 @@ Judgment authority and execution authority are deliberately separate. QuakeSLA p
 - Legacy lifecycle contract: `0x7D2558EE3D6eA3c24dB5edD9D2CdC613C24e9659`
 - Audited pre-final contract: `0x177dc3165Af4fd29c1cFD356e7895130Be04A399` (live denial/unresolved evidence only; final source adds non-terminal denials, post-start cancellation protection and consumed-amount accounting)
 - Final hardened contract: `0xaE660255E845d506a012C3b6540cA9E48995F24b`
+- v3 revalidation candidate: `0xafc7939909Af844DEa6431EB3A46fDe7D7f9C713` (exact source parity verified; lifecycle pending)
 
 The completed contract is [`contracts/quake_sla.py`](contracts/quake_sla.py). The previously deployed `USGSFetchProbe` is evidence that Studio Next validators can fetch and reach strict consensus over the selected USGS source; it is not the production QuakeSLA address.
 
