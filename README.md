@@ -31,8 +31,9 @@ Judgment authority and execution authority are deliberately separate. QuakeSLA p
 - Explorer: <https://explorer-studio-dev.genlayer.com/>
 - Legacy lifecycle contract: `0x7D2558EE3D6eA3c24dB5edD9D2CdC613C24e9659`
 - Audited pre-final contract: `0x177dc3165Af4fd29c1cFD356e7895130Be04A399` (live denial/unresolved evidence only; final source adds non-terminal denials, post-start cancellation protection and consumed-amount accounting)
-- Final hardened contract: `0xaE660255E845d506a012C3b6540cA9E48995F24b`
-- v3 revalidation candidate: `0xafc7939909Af844DEa6431EB3A46fDe7D7f9C713` (exact source parity verified; lifecycle pending)
+- Legacy hardened v2 contract: `0xaE660255E845d506a012C3b6540cA9E48995F24b`
+- Production v3 revalidation contract: `0xafc7939909Af844DEa6431EB3A46fDe7D7f9C713` (exact source parity and full live lifecycle verified)
+- Live application: <https://quake-sla.pages.dev>
 
 The completed contract is [`contracts/quake_sla.py`](contracts/quake_sla.py). The previously deployed `USGSFetchProbe` is evidence that Studio Next validators can fetch and reach strict consensus over the selected USGS source; it is not the production QuakeSLA address.
 
@@ -98,12 +99,12 @@ The caller cannot provide a hostname, path, scheme or verdict. Event identifiers
 
 ## Deployment checklist
 
-> Protocol v3 changes storage and ABI. The production frontend must remain on the verified v2 address until v3 is deployed and its two-fetch lifecycle is proven live.
+Protocol v3 is deployed and its two-fetch lifecycle is proven live.
 
-- Use the final Studio Next address already recorded in `frontend/.env.example`.
+- Use the production v3 Studio Next address recorded in `frontend/.env.example`.
 - Require both accepted/finalized lifecycle **and** `FINISHED_WITH_RETURN`.
 - Copy `frontend/.env.example` to the ignored `frontend/.env.local` after setting the new address.
-- Final v2 approved, one-time consume and replay-rejection transactions are recorded in `docs/LIVE_EVIDENCE.md`.
+- Final v3 assessment, delayed confirmation, one-time consume and replay-rejection evidence is recorded in `docs/MILESTONE_V3_REVALIDATION.md`.
 - Run at least one denied branch and one authorization/consume rejection.
 - Rebuild the static frontend and deploy `frontend/out` to Cloudflare Pages.
 - Record the mandatory demo video showing wallet connection, fee panel, consensus result and on-chain evidence explorer.

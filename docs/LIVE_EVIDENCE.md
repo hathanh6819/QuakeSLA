@@ -1,5 +1,20 @@
 # Studio Next live evidence
 
+## Production v3: delayed revalidation completed
+
+- Contract: `0xafc7939909Af844DEa6431EB3A46fDe7D7f9C713`
+- Policy: `1` (`QUAKE-V3-LIVE-20261017`)
+- Reviewed USGS event: `us6000u2z9`, M4.8 near Norsup, Vanuatu
+- Initial assessment: `0xa80b73c8e7188944283db474233bbe3ae790cfc92a9f5c38362eb9a3adc59af6` → `PENDING_CONFIRMATION`
+- Early confirmation: rejected with `REVALIDATION_DELAY_ACTIVE`
+- Delayed confirmation: `0xd0ace9a3d0035d4f15720bb14ebe3ada419288da7dd219bc4d47063350871802` → `READY`
+- Evidence drift: `NON_MATERIAL_SOURCE_CHANGE`; all material USGS fields remained unchanged
+- Consumption: `0x41e6c85fc1780c61d4f20f5c2868bb771536708fdcf3d2e404ca04539ac500dd` → `CONSUMED`, exactly `10000 USD_CENTS`
+- Replay: fee-free simulation rejected with `AUTHORIZATION_NOT_READY`
+- Final state: revision `4`, consumed by the bound executor
+
+All submitted lifecycle transactions finalized with `FINISHED_WITH_RETURN / MAJORITY_AGREE`. See [`MILESTONE_V3_REVALIDATION.md`](MILESTONE_V3_REVALIDATION.md) and [`deployment-v3.json`](../deployments/deployment-v3.json) for the complete audit trail.
+
 The source-access probe uses the same pinned Studio Next runner and fixed USGS detail endpoint pattern as QuakeSLA. It independently fetched the reviewed `us7000thsp` record under validator consensus.
 
 - Network: Studio Next (`61997`)

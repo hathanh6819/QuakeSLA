@@ -45,9 +45,9 @@ Next.js static build:      passed
 
 The Windows Direct Mode package currently fails while loading its own GenLayer message codec (`unexpected end of memory`) before contract deployment. This is the already-documented runner mismatch, not a contract assertion failure. The expanded 19-test Direct Mode suite is committed for execution with the matching Studio runner.
 
-## Deployment gate
+## Production status
 
-This release changes storage and ABI and therefore requires a new Studio Next contract. Do not point the production frontend at v3 until deployed source parity, initial assessment, early-confirmation rejection, delayed confirmation, `READY`, consumption and replay rejection are verified on the new address.
+The v3 contract has exact deployed-source parity and the complete two-wallet lifecycle is finalized on Studio Next. The production frontend is configured for this address.
 
 ## Live candidate
 
@@ -70,4 +70,19 @@ A real reviewed earthquake occurred after coverage began:
 - Confirmation becomes eligible at `1792250803876` ms (2026-10-17 22:26:43 UTC+7).
 - A fee-free `confirm_event(1, 2)` simulation before that time failed with `REVALIDATION_DELAY_ACTIVE`, proving the delay gate.
 
-The lifecycle now waits for the on-chain confirmation time. Historical or fabricated evidence is not used.
+### Delayed confirmation and execution
+
+After the on-chain delay elapsed, validators independently fetched the same event again. All material fields remained identical; only the response-body digest changed, so the contract transparently classified the result as `NON_MATERIAL_SOURCE_CHANGE`.
+
+| Check | Transaction / simulation | Verified outcome |
+| --- | --- | --- |
+| Delayed `confirm_event(1, 2)` | [`0xd0ace9…71802`](https://explorer-studio-dev.genlayer.com/tx/0xd0ace9a3d0035d4f15720bb14ebe3ada419288da7dd219bc4d47063350871802) | `FINALIZED / FINISHED_WITH_RETURN / MAJORITY_AGREE`; policy `READY`, revision `3` |
+| Consume exactly `10000 USD_CENTS` | [`0x41e6c8…500dd`](https://explorer-studio-dev.genlayer.com/tx/0x41e6c85fc1780c61d4f20f5c2868bb771536708fdcf3d2e404ca04539ac500dd) | `FINALIZED / FINISHED_WITH_RETURN / MAJORITY_AGREE`; policy `CONSUMED`, revision `4` |
+| Replay at revision `4` | fee-free simulation | Rejected with `AUTHORIZATION_NOT_READY`; no fee or state mutation |
+
+- Confirmation receipt SHA-256: `e1df5c68b73cbcf13b12fe556eae63ffadee8743cef0a7b6e02dd237996d12ff`.
+- Drift: `NON_MATERIAL_SOURCE_CHANGE`; magnitude, time, coordinates, place and reviewed status are unchanged.
+- Bound executor: `0xf96Cf822F9f4e76956AB9fAAa22B3BdCD7b10aD6`.
+- Final state: `CONSUMED`, `consumed_amount = 10000`, revision `4`.
+
+Historical or fabricated evidence was not used. Both receipts came from validator fetches of the authoritative USGS record.
